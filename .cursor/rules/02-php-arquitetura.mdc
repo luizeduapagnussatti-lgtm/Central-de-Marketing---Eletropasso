@@ -1,0 +1,32 @@
+---
+description: Convencoes de arquitetura PHP — MVC leve, PDO, services.
+globs: **/*.php
+alwaysApply: false
+---
+
+# PHP — Arquitetura MVC Leve
+
+## Estrutura de Diretorios
+- `config/` — database.php, app.php (sem logica)
+- `controllers/` — recebem request, delegam para services, retornam view ou JSON
+- `services/` — toda logica de negocio isolada aqui (Gemini, Hub, Render, Encarte)
+- `views/` — apenas apresentacao; sem SQL, sem curl
+
+## PDO — Obrigatorio
+```php
+// CORRETO
+$st = $pdo->prepare('SELECT * FROM encartes WHERE id = ?');
+$st->execute([$id]);
+
+// ERRADO — nunca interpolacao direta
+$pdo->query("SELECT * FROM encartes WHERE id = $id");
+```
+
+## Controllers
+- Um arquivo por recurso: `controllers/encarte_controller.php`
+- Primeiro: validar input. Segundo: chamar service. Terceiro: responder.
+- Em erro: `http_response_code(4xx)` + JSON `{ success: false, error: "..." }`.
+
+## Services
+- Cada integracao externa tem seu proprio service em `services/`.
+- Services nao fazem echo/output — apenas retornam dados ou lancam excecao.

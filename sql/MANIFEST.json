@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "database": "central_marketing_eletropasso",
+  "description": "Ordem oficial das migrations SQL da Central de Marketing Eletropasso.",
+  "migrations": [
+    {
+      "id": "001",
+      "file": "sql/001_schema_inicial.sql",
+      "description": "Schema completo, tabelas base e seeds modelo_01/modelo_02"
+    },
+    {
+      "id": "002",
+      "file": "sql/002_config_rembg.sql",
+      "description": "Chave rembg_bin e modelo Gemini 2.5"
+    },
+    {
+      "id": "003",
+      "file": "sql/003_modelo_02.sql",
+      "description": "Metadados reexecutaveis do modelo_02"
+    },
+    {
+      "id": "004",
+      "file": "sql/004_modelos_config_visual.sql",
+      "description": "Colunas descricao/config_visual e defaults visuais"
+    },
+    {
+      "id": "005",
+      "file": "sql/005_modelo_03.sql",
+      "description": "Insere modelo_03 Premium Escuro"
+    },
+    {
+      "id": "006",
+      "file": "sql/006_modelo_fundos.sql",
+      "description": "Fundos estaticos do modelo_03"
+    },
+    {
+      "id": "007",
+      "file": "sql/007_fabric_state.sql",
+      "description": "Inicializa fabric_state vazio no JSON"
+    }
+  ]
+}

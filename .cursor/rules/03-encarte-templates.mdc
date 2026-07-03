@@ -1,0 +1,44 @@
+---
+description: Regras para templates HTML/CSS de encarte — pixel-perfect, sem JS de layout.
+globs: views/templates/**
+alwaysApply: false
+---
+
+# Templates de Encarte — Regras de Renderizacao
+
+## Premissa Critica
+O template sera capturado pelo Puppeteer no servidor. Nao pode depender de JS para layout.
+Todo posicionamento deve funcionar em CSS puro (Grid / Flexbox).
+
+## Variaveis CSS da Marca
+```css
+:root {
+  --ep-primary:   #b91c1c;
+  --ep-dark:      #7f1d1d;
+  --ep-border:    #fecaca;
+  --ep-bg:        #ffffff;
+  --ep-badge-bg:  #b91c1c;
+  --ep-badge-txt: #ffffff;
+}
+```
+
+## Dimensoes Fixas por Formato
+- `9x16` / `status`: `width: 1080px; height: 1920px`
+- `1x1`: `width: 1080px; height: 1080px`
+- `16x9`: `width: 1920px; height: 1080px`
+- `a4`: `width: 2480px; height: 3508px`
+
+## Cartao de Produto (obrigatorio)
+Cada cartao deve conter — e suportar nome longo com `overflow: hidden; text-overflow: ellipsis`:
+- Foto recortada (fundo transparente / branco)
+- SKU pequeno (opcional)
+- Nome comercial
+- Preco normal riscado (`text-decoration: line-through`)
+- Preco promocional em destaque (fonte >= 2x do normal)
+- Unidade (ex: `und`)
+- Badge "OFERTA" ou "PROMOCAO" em `--ep-primary`
+
+## Proibido
+- `@import url(https://...)` — fontes externas (usar locais em `assets/fonts/`)
+- Animacoes CSS (transition, animation)
+- `position: fixed` — quebra screenshot

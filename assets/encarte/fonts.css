@@ -1,0 +1,19 @@
+/**
+ * Fontes locais para encartes (SIL Open Font License).
+ * Oswald e Bebas Neue — baixadas de fonts.google.com, servidas offline.
+ */
+@font-face {
+  font-family: 'Oswald';
+  src: url('../fonts/Oswald-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Bebas Neue';
+  src: url('../fonts/BebasNeue-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}

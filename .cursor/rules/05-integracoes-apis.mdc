@@ -1,0 +1,45 @@
+---
+description: Contratos de integracao com Hub de Precificacao, Gemini API e Rembg.
+globs: services/**
+alwaysApply: false
+---
+
+# Integracoes Externas — Contratos e Fallbacks
+
+## Hub de Precificacao
+
+- Endpoint: `GET /api/marketing/produto?sku={SKU}&token={TOKEN}`
+- Campos retornados: `sku`, `nome_erp`, `preco_venda_atual`
+- Fallback obrigatorio: se SKU nao encontrado, retornar `{ success: false, error: "SKU nao localizado" }`
+- Timeout cURL: 5 segundos. Nunca travar a UI aguardando o Hub.
+- Nunca expor o token na UI/HTML.
+
+## Gemini — Normalizacao de Nome
+
+- Modelo: `gemini-2.5-flash`
+- Temperature: `0.1` (precisao maxima, evitar alucinacoes)
+- `system_instruction`: assistente de marketing Eletropasso; max 60 chars; sem aspas/markdown
+- User prompt: apenas o nome bruto do ERP
+- `maxOutputTokens`: 128
+- `thinkingConfig.thinkingBudget`: `0` (obrigatorio no 2.5-flash — thinking consome o budget e trunca a saida)
+- Rejeitar resposta com menos de 3 caracteres; usar fallback
+
+## Gemini — Geracao de Titulo
+
+- Modelo: `gemini-2.5-flash`
+- Temperature: `0.7` (variacao criativa controlada)
+- `system_instruction`: copywriter Eletropasso; material eletrico/construcao
+- User prompt: `Produtos do encarte: Nome1, Nome2, ...`
+- `responseMimeType`: `application/json`
+- `responseSchema`: objeto com array `opcoes` (strings)
+- `thinkingConfig.thinkingBudget`: `0`
+- Nunca usar regex para extrair JSON — resposta ja vem estruturada
+
+## Rembg — Remocao de Fundo (offline)
+
+- NAO usar Gemini para editar pixels de imagem
+- Comando: `{REMBG_BIN} i {input} {output.png}`
+- Instalacao servidor: `pip install rembg[cli]`
+- Variavel: `REMBG_BIN` no `.env` ou `config_sistema.rembg_bin`
+- Saida sempre PNG transparente em `assets/produtos/limpas/`
+- Em falha: manter foto original, `processamento_imagem_status = erro`

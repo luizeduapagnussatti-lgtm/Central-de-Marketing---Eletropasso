@@ -1,0 +1,46 @@
+/**
+ * Tokens de identidade visual Eletropasso
+ */
+:root {
+  --ep-primary:   #b91c1c;
+  --ep-dark:      #7f1d1d;
+  --ep-border:    #fecaca;
+  --ep-bg:        #ffffff;
+  --ep-badge-bg:  #b91c1c;
+  --ep-badge-txt: #ffffff;
+  --ep-gray:      #6b7280;
+  --ep-light:     #f9fafb;
+  --ep-ink:       #111827;
+
+  --ep-gradient-brand: linear-gradient(135deg, #7f1d1d 0%, #b91c1c 52%, #991b1b 100%);
+  --ep-gradient-soft:  linear-gradient(180deg, #ffffff 0%, #fff5f5 100%);
+  --ep-gradient-panel: linear-gradient(90deg, #7f1d1d 0%, #b91c1c 100%);
+  --ep-gradient-promo: linear-gradient(135deg, #047857 0%, #059669 55%, #10b981 100%);
+
+  --ep-promo-green:       #059669;
+  --ep-promo-green-dark:  #047857;
+  --ep-promo-green-bg:    #ecfdf5;
+  --ep-promo-green-border:#6ee7b7;
+
+  --space-xs:  6px;
+  --space-sm:  8px;
+  --space-md:  16px;
+  --space-lg:  24px;
+  --space-xl:  32px;
+  --space-2xl: 48px;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+
+  --shadow-sm: 0 1px 3px rgba(127, 29, 29, 0.08);
+  --shadow-md: 0 8px 24px rgba(127, 29, 29, 0.1);
+  --shadow-lg: 0 16px 40px rgba(127, 29, 29, 0.12);
+
+  --z-overlay: 100;
+  --z-modal:   200;
+
+  --layout-max:    1440px;
+  --layout-gutter: clamp(20px, 3vw, 48px);
+}

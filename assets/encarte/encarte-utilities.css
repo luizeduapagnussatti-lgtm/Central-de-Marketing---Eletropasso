@@ -1,0 +1,103 @@
+/**
+ * Utilitarios CSS compartilhados para templates de encarte (Puppeteer offline).
+ * Tokens alinhados a assets/brand/tokens.css
+ */
+:root {
+  --ep-primary: #b91c1c;
+  --ep-dark: #7f1d1d;
+  --ep-card-bg: #0a1526;
+  --ep-card-border: #1e3a8a;
+}
+
+/* Foto PNG sem fundo — drop-shadow so nos pixels visiveis */
+.foto-flutuante {
+  object-fit: contain;
+  filter: drop-shadow(0 18px 22px rgba(0, 0, 0, 0.45)) brightness(1.05);
+}
+
+.foto-flutuante--forte {
+  object-fit: contain;
+  filter: drop-shadow(-15px 20px 15px rgba(0, 0, 0, 0.9)) brightness(1.1);
+}
+
+.foto-flutuante--suave {
+  object-fit: contain;
+  filter: drop-shadow(0 12px 16px rgba(0, 0, 0, 0.25));
+}
+
+/* Preco com profundidade (varejo) */
+.preco-3d {
+  color: #ffffff;
+  text-shadow:
+    2px 2px 0 #b91c1c,
+    4px 4px 0 #7f1d1d,
+    6px 6px 10px rgba(0, 0, 0, 0.8);
+}
+
+/* Card premium com glow neon */
+.card-glow {
+  background: var(--ep-card-bg, #0a1526);
+  border: 1px solid var(--ep-card-border, #1e3a8a);
+  box-shadow:
+    0 0 15px rgba(37, 99, 235, 0.4),
+    inset 0 0 20px rgba(0, 0, 0, 0.8);
+}
+
+.card-glow-header {
+  background: linear-gradient(180deg, var(--ep-primary, #dc2626), var(--ep-dark, #991b1b));
+  color: #fff;
+  text-align: center;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+/* Tipografia display (requer fonts.css) */
+.font-display {
+  font-family: 'Oswald', 'Segoe UI', Arial, sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.font-price {
+  font-family: 'Bebas Neue', 'Oswald', 'Segoe UI', Arial, sans-serif;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+}
+
+/* Palco estatico como background do encarte */
+.encarte-palco {
+  background-color: #030b17;
+  background-size: cover;
+  background-position: center top;
+  background-repeat: no-repeat;
+}
+
+/* Grid dinamico sobre palco modelo_03 */
+.encarte-overlay-grid {
+  position: absolute;
+  left: 40px;
+  right: 40px;
+  top: 520px;
+  bottom: 200px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  gap: 25px;
+}
+
+.encarte-footer-overlay {
+  position: absolute;
+  left: 40px;
+  right: 40px;
+  bottom: 30px;
+}
+
+/* Tailwind piloto — grid utilitario prefixado ep- */
+.ep-grid { display: grid; }
+.ep-grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.ep-grid-rows-2 { grid-template-rows: repeat(2, minmax(0, 1fr)); }
+.ep-gap-6 { gap: 1.5rem; }
+.ep-absolute { position: absolute; }
+.ep-inset-x-10 { left: 2.5rem; right: 2.5rem; }
+.ep-top-132 { top: 33rem; }
+.ep-bottom-12 { bottom: 3rem; }

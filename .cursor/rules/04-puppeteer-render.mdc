@@ -1,0 +1,30 @@
+---
+description: Convencoes do motor de captura Puppeteer — viewports, screenshot, limpeza.
+globs: bin/**
+alwaysApply: false
+---
+
+# Puppeteer — Motor de Renderizacao Backend
+
+## Viewports por Formato
+```js
+const VIEWPORTS = {
+  '9x16':   { width: 1080, height: 1920, deviceScaleFactor: 2 },
+  'status': { width: 1080, height: 1920, deviceScaleFactor: 2 },
+  '1x1':    { width: 1080, height: 1080, deviceScaleFactor: 2 },
+  '16x9':   { width: 1920, height: 1080, deviceScaleFactor: 2 },
+  'a4':     { width: 2480, height: 3508, deviceScaleFactor: 1 },
+};
+```
+
+## Sequencia Obrigatoria
+1. `page.setViewport(viewport)` antes de navegar
+2. `waitUntil: 'networkidle0'` no `page.goto()`
+3. Aguardar todas `<img>` com `page.evaluate()`
+4. `page.screenshot({ type: 'png', fullPage: false, clip: {x:0,y:0,...} })`
+5. Fechar browser e limpar `temp/temp_encarte_*.html`
+
+## Limpeza
+- PHP apaga `temp/temp_encarte_*.html` apos confirmacao do PNG gerado.
+- Timeout maximo configuravel via argumento CLI (default: 30s).
+- Em erro: script Node retorna exit code 1; PHP registra `erro_geracao` na tabela.

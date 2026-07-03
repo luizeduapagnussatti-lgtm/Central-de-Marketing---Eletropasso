@@ -1,0 +1,98 @@
+---
+description: Comandos Impeccable para layout e visual — atalhos e quando usar cada um
+globs: public/css/**,views/**,assets/brand/**,index.php,criar.php,config.php
+alwaysApply: false
+---
+
+# Impeccable — Comandos de Layout e Visual
+
+Agente dedicado a ajustes visuais. Antes de qualquer comando, carregar contexto com `node .cursor/skills/impeccable/scripts/context.mjs` (le `PRODUCT.md` + `DESIGN.md`).
+
+## Como invocar
+
+| Forma | Exemplo |
+|-------|---------|
+| Atalho direto (pin) | `/layout criar.php` |
+| Comando completo | `/impeccable layout criar.php` |
+| Descricao livre | `/impeccable refazer o header da galeria` |
+
+Atalhos pinados vivem em `.cursor/skills/<comando>/SKILL.md`.
+
+## Comandos — Construir
+
+| Comando | O que faz |
+|---------|-----------|
+| `/craft [feature]` | Fluxo completo: shape + build + iteracao visual |
+| `/init` | Setup unico: PRODUCT.md, DESIGN.md, live mode |
+| `/document` | Gera DESIGN.md a partir do codigo existente |
+| `/extract [alvo]` | Extrai tokens e componentes reutilizaveis |
+| `/shape [feature]` | Planeja UX/UI antes de codar |
+
+## Comandos — Avaliar
+
+| Comando | O que faz |
+|---------|-----------|
+| `/critique [tela]` | Review UX: hierarquia, clareza, carga cognitiva |
+| `/audit [area]` | Qualidade tecnica: a11y, perf, responsivo, anti-patterns |
+
+## Comandos — Refinar
+
+| Comando | O que faz |
+|---------|-----------|
+| `/polish [tela]` | Passada final antes de ship |
+| `/bolder [tela]` | Amplifica design timido ou generico |
+| `/quieter [tela]` | Suaviza design agressivo ou barulhento |
+| `/distill [tela]` | Remove complexidade, vai ao essencial |
+| `/harden [tela]` | Erros, i18n, overflow, edge cases |
+| `/onboard [tela]` | Empty states e fluxo de primeira vez |
+
+## Comandos — Melhorar visual
+
+| Comando | O que faz |
+|---------|-----------|
+| `/layout [tela]` | Espacamento, grid, ritmo, hierarquia |
+| `/colorize [tela]` | Cor estrategica (preservar vermelho Eletropasso) |
+| `/typeset [tela]` | Tipografia, escala, pesos, legibilidade |
+| `/animate [tela]` | Motion intencional + prefers-reduced-motion |
+| `/delight [tela]` | Personalidade e detalhes memoraveis |
+| `/overdrive [tela]` | Efeitos ambiciosos (usar com moderacao no painel) |
+
+## Comandos — Corrigir
+
+| Comando | O que faz |
+|---------|-----------|
+| `/clarify [tela]` | Copy UX, labels, mensagens de erro |
+| `/adapt [tela]` | Responsivo, breakpoints, touch targets |
+| `/optimize [tela]` | Performance de UI |
+
+## Iteracao no browser
+
+| Comando | O que faz |
+|---------|-----------|
+| `/live` | Variantes visuais no navegador (requer dev server) |
+
+## Exemplos para este projeto
+
+```
+/audit public/css/app.css
+/critique index.php galeria
+/layout criar.php
+/polish app-header
+/colorize encarte-card
+/typeset views/templates/modelo_01.php
+```
+
+## Anti-patterns (Impeccable + Eletropasso)
+
+- Gradientes genericos, glassmorphism decorativo, gradient text
+- Side-stripe borders, card grids identicos repetidos
+- Cinza claro em texto de corpo (contraste < 4.5:1)
+- Animacoes nos templates de encarte (Puppeteer)
+- Substituir vermelho `#b91c1c` por paleta generica
+
+## Pin / Unpin
+
+```bash
+node .cursor/skills/impeccable/scripts/pin.mjs pin layout
+node .cursor/skills/impeccable/scripts/pin.mjs unpin layout
+```

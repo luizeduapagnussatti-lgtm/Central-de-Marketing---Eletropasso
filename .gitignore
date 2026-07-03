@@ -1,0 +1,24 @@
+# Dependencias
+/node_modules/
+/vendor/
+
+# Ambiente
+.env
+!.env.example
+
+# Temporarios e gerados
+/temp/*
+!/temp/.gitkeep
+/encartes/gerados/*
+!/encartes/gerados/.gitkeep
+/assets/produtos/originais/*
+!/assets/produtos/originais/.gitkeep
+/assets/produtos/limpas/*
+!/assets/produtos/limpas/.gitkeep
+/storage/logs/*
+!/storage/logs/.gitkeep
+
+# Sistema
+.DS_Store
+Thumbs.db
+*.log

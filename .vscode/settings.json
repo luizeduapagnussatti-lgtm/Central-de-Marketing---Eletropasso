@@ -1,0 +1,16 @@
+{
+  "terminal.integrated.env.windows": {
+    "Path": "C:\\Program Files\\nodejs;${env:Path}"
+  },
+  "npm.autoDetect": "on",
+  "npm.exclude": [
+    "**/node_modules/**",
+    "**/.cursor/**"
+  ],
+  "npm.scriptExplorerAction": "run",
+  "sqlfluff.dialect": "mysql",
+  "sqlfluff.linter.lintEntireProject": false,
+  "markdownlint.ignore": [
+    ".cursor/skills/impeccable/**"
+  ]
+}

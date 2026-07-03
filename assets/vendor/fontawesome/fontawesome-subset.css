@@ -1,0 +1,25 @@
+/**
+ * Font Awesome 6 Free subset — icones usados nos encartes (self-hosted, offline).
+ */
+@font-face {
+  font-family: 'Font Awesome 6 Free';
+  font-style: normal;
+  font-weight: 900;
+  font-display: block;
+  src: url('webfonts/fa-solid-900.woff2') format('woff2');
+}
+
+.fa-solid {
+  font-family: 'Font Awesome 6 Free';
+  font-weight: 900;
+  font-style: normal;
+  line-height: 1;
+  display: inline-block;
+}
+
+.fa-lightbulb::before { content: '\f0eb'; }
+.fa-wifi::before { content: '\f1eb'; }
+.fa-shield-halved::before { content: '\f3ed'; }
+.fa-wrench::before { content: '\f0ad'; }
+.fa-plug::before { content: '\f1e6'; }
+.fa-bolt::before { content: '\f0e7'; }

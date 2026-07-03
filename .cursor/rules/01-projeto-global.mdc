@@ -1,0 +1,32 @@
+---
+description: Regras globais da Central de Marketing Eletropasso — stack, idioma, convencoes.
+alwaysApply: true
+---
+
+# Central de Marketing Eletropasso — Regras Globais
+
+## Stack e Restricoes
+
+- PHP 8.2+, MySQL 8, Vanilla JS, HTML5/CSS3. Sem frameworks PHP (Laravel, Symfony) na fase 1.
+- Node.js usado SOMENTE em `bin/render_encarte.js` (Puppeteer). Nao misturar logica de negocio la.
+- Sem jQuery. Vanilla JS (fetch, classList, querySelector).
+
+## Convencoes de Codigo
+
+- Variaveis PHP: snake_case. Classes PHP: PascalCase. IDs/nomes CSS: kebab-case.
+- Comentarios em portugues apenas quando explicam regra de negocio nao-obvio.
+- Nunca commitar `.env` com chaves de API — usar `.env.example` como referencia.
+- Paths de assets sempre relativos ao docroot (`/assets/produtos/limpas/foto.png`).
+
+## Identidade Visual Eletropasso
+
+- Cor primaria: `#b91c1c`. Escuro: `#7f1d1d`. Borda/card: `#fecaca`.
+- Badge promocional: vermelho `#b91c1c` com texto branco "OFERTA" ou "PROMOCAO".
+- Logo preta (fundo claro): `assets/brand/logo_eletropasso_preta.png`
+- Logo branca (fundo escuro): `assets/brand/logo_eletropasso_branca.png`
+- Alias padrao: `assets/brand/logo_eletropasso.png`
+- Sem gradientes genericos. Tipografia forte, clara, sem efeitos AI-slop.
+
+## Respostas JSON
+
+- Toda resposta AJAX/API segue: `{ "success": true|false, "data": {}, "error": null|"mensagem" }`.
