@@ -2,9 +2,12 @@
 /node_modules/
 /vendor/
 
-# Ambiente
+# Ambiente — secrets locais (nunca commitar)
 .env
+.env.*
 !.env.example
+*.env.local
+*.env.production
 
 # Temporarios e gerados
 /temp/*
