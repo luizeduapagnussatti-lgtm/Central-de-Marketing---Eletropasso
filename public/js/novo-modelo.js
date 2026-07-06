@@ -14,8 +14,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const w = opt?.dataset.width || '1080';
     const h = opt?.dataset.height || '1920';
     dimsHint.innerHTML =
-      'Dimensao exigida: ' +
-      `<span class="format-dims-badge"><strong>${w}×${h} px</strong> · PNG ou JPEG</span>`;
+      'Tamanho ideal: ' +
+      `<span class="format-dims-badge"><strong>${w}×${h} px</strong> · PNG ou JPEG</span>` +
+      ' · mesma proporcao (ex.: metade da resolucao) sera ajustada automaticamente';
   }
 
   function updateFileLabel() {

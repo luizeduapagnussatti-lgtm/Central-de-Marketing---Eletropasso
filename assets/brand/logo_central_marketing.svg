@@ -1,0 +1,27 @@
+<svg viewBox="0 0 850 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Central de Marketing Eletropasso">
+  <defs>
+    <linearGradient id="redBg2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ef4444" />
+      <stop offset="100%" stop-color="#991b1b" />
+    </linearGradient>
+    <linearGradient id="yellowTag2" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#fde047" />
+      <stop offset="100%" stop-color="#d97706" />
+    </linearGradient>
+    <filter id="shadowLogo">
+      <feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#000" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+  <g transform="translate(0, 10) scale(0.36)">
+    <rect width="500" height="500" rx="120" fill="url(#redBg2)" />
+    <circle cx="250" cy="250" r="140" fill="none" stroke="#ffffff" stroke-width="40" opacity="0.9" />
+    <circle cx="250" cy="250" r="60" fill="#ffffff" opacity="0.9" />
+    <g transform="rotate(-30 250 250)">
+      <path d="M 120 250 L 220 150 L 420 150 L 420 350 L 220 350 Z" fill="url(#yellowTag2)" stroke="#0f172a" stroke-width="20" stroke-linejoin="round" filter="url(#shadowLogo)"/>
+      <circle cx="180" cy="250" r="18" fill="#b91c1c" stroke="#0f172a" stroke-width="10" />
+      <text x="320" y="295" font-family="Oswald, Arial Black, sans-serif" font-weight="700" font-size="120" fill="#0f172a" text-anchor="middle">%</text>
+    </g>
+  </g>
+  <text x="215" y="80" font-family="Montserrat, Arial, sans-serif" font-weight="900" font-size="34" fill="#64748b" letter-spacing="4">CENTRAL DE MARKETING</text>
+  <text x="210" y="155" font-family="Oswald, Arial Black, sans-serif" font-weight="700" font-size="75" fill="#b91c1c" letter-spacing="1">ELETRO<tspan fill="#0f172a">PASSO</tspan></text>
+</svg>

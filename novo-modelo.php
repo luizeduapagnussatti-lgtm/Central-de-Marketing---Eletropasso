@@ -9,9 +9,7 @@ $formatos = marketing_formatos();
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title><?= htmlspecialchars($page_title) ?> — Eletropasso</title>
+<?php require marketing_path('views/partials/app_head.php'); ?>
 <link rel="stylesheet" href="assets/brand/tokens.css">
 <link rel="stylesheet" href="public/css/app.css">
 </head>
@@ -96,7 +94,7 @@ $formatos = marketing_formatos();
               <?php endforeach; ?>
             </select>
             <p id="formato-dims-hint" class="form-field-hint">
-              Dimensao exigida:
+              Tamanho ideal:
               <span class="format-dims-badge"><strong>1080×1920 px</strong> · PNG ou JPEG</span>
             </p>
           </div>

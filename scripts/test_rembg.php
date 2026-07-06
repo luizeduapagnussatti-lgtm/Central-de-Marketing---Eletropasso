@@ -27,7 +27,7 @@ $assistant = new MarketingAssistant();
 echo "Entrada: {$input}\n";
 echo "Saida:   {$output}\n";
 
-if ($assistant->removerFundoImagem($input, $output)) {
+if ($assistant->removerFundoImagem($input, $output)['ok']) {
     echo "Rembg OK — arquivo gerado.\n";
     exit(0);
 }

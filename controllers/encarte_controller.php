@@ -27,7 +27,8 @@ class EncarteController
             'gerar'         => $this->gerar(),
             'status'        => $this->status(),
             'nova_versao'   => $this->novaVersao(),
-            'upload_foto'   => $this->uploadFoto(),
+            'upload_foto'       => $this->uploadFoto(),
+            'reprocessar_fundo' => $this->reprocessarFundo(),
             'buscar_sku'    => $this->buscarSku(),
             'titulos_ia'    => $this->titulosIa(),
             'normalizar'    => $this->normalizarNome(),
@@ -163,19 +164,56 @@ class EncarteController
         $caminhoRelativo = 'assets/produtos/originais/' . $filename;
         $caminhoLimpa = 'assets/produtos/limpas/' . pathinfo($filename, PATHINFO_FILENAME) . '.png';
         $statusImagem = 'pendente';
+        $erroImagem = null;
 
-        if ($this->assistant->removerFundoImagem($destino, marketing_path($caminhoLimpa))) {
+        $rembg = $this->assistant->removerFundoImagem($destino, marketing_path($caminhoLimpa));
+        if ($rembg['ok']) {
             $statusImagem = 'ok';
         } else {
             copy($destino, marketing_path(str_replace('.png', '.' . $ext, $caminhoLimpa)));
             $caminhoLimpa = 'assets/produtos/limpas/' . pathinfo($filename, PATHINFO_FILENAME) . '.' . $ext;
             $statusImagem = 'erro';
+            $erroImagem = $rembg['erro'];
         }
 
         marketing_json_response(true, [
             'caminho_foto_original'       => $caminhoRelativo,
             'caminho_foto_limpa'          => $caminhoLimpa,
             'processamento_imagem_status' => $statusImagem,
+            'processamento_imagem_erro'   => $erroImagem,
+        ]);
+    }
+
+    private function reprocessarFundo(): void
+    {
+        $payload = json_decode((string) file_get_contents('php://input'), true);
+        if (!is_array($payload)) {
+            $payload = $_POST;
+        }
+
+        $caminhoOriginal = trim((string) ($payload['caminho_foto_original'] ?? ''));
+        if ($caminhoOriginal === '' || !str_starts_with($caminhoOriginal, 'assets/produtos/originais/')) {
+            marketing_json_response(false, null, 'Caminho da foto original invalido.', 422);
+        }
+
+        $absOriginal = marketing_path($caminhoOriginal);
+        if (!is_file($absOriginal)) {
+            marketing_json_response(false, null, 'Foto original nao encontrada.', 404);
+        }
+
+        $nomeBase = pathinfo($caminhoOriginal, PATHINFO_FILENAME);
+        $caminhoLimpa = 'assets/produtos/limpas/' . $nomeBase . '.png';
+
+        $rembg = $this->assistant->removerFundoImagem($absOriginal, marketing_path($caminhoLimpa));
+        if (!$rembg['ok']) {
+            marketing_json_response(false, null, $rembg['erro'] ?? 'Falha ao reprocessar fundo.', 500);
+        }
+
+        marketing_json_response(true, [
+            'caminho_foto_original'       => $caminhoOriginal,
+            'caminho_foto_limpa'          => $caminhoLimpa,
+            'processamento_imagem_status' => 'ok',
+            'processamento_imagem_erro'   => null,
         ]);
     }
 
