@@ -35,7 +35,55 @@ async function apiCall(recurso, acao, options = {}) {
 }
 
 function formatMoney(value) {
-  return 'R$ ' + Number(value).toFixed(2).replace('.', ',');
+  const num = typeof value === 'string' ? brToFloat(value) : Number(value);
+  if (Number.isNaN(num)) return 'R$ --';
+  return 'R$ ' + num.toFixed(2).replace('.', ',');
+}
+
+/** Converte float ou string numerica para exibicao BR (ex.: 14.99 -> "14,99"). */
+function floatToBr(value) {
+  const num = typeof value === 'string' ? brToFloat(value) : Number(value);
+  if (Number.isNaN(num) || num === 0) return '';
+  const fixed = num.toFixed(2);
+  const [intPart, decPart] = fixed.split('.');
+  const intFormatted = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return `${intFormatted},${decPart}`;
+}
+
+/** Converte string BR (ex.: "14,99" ou "1.499,99") para float. */
+function brToFloat(str) {
+  if (str === null || str === undefined || str === '') return NaN;
+  if (typeof str === 'number') return str;
+  const cleaned = String(str).trim().replace(/\./g, '').replace(',', '.');
+  return parseFloat(cleaned);
+}
+
+/** Aplica mascara de centavos BR em um input (digita da direita p/ esquerda). */
+function maskPriceInput(input) {
+  const digits = input.value.replace(/\D/g, '');
+  if (digits === '') {
+    input.value = '';
+    return '';
+  }
+  const cents = parseInt(digits, 10);
+  const num = cents / 100;
+  input.value = floatToBr(num);
+  return input.value;
+}
+
+/** Vincula mascara BR a inputs de preco dentro de um container. */
+function bindPriceMasks(container) {
+  if (!container) return;
+  container.querySelectorAll('[data-price-mask]').forEach((input) => {
+    if (input.dataset.priceBound === '1') return;
+    input.dataset.priceBound = '1';
+    input.addEventListener('input', () => maskPriceInput(input));
+    input.addEventListener('blur', () => {
+      if (input.value && brToFloat(input.value) === 0) {
+        input.value = '';
+      }
+    });
+  });
 }
 
 function showLoader(msg = 'Gerando encarte...') {

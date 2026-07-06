@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Brand Kit - Central de Marketing Eletropasso (Versão Comercial)</title>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700;900&family=Oswald:wght@700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #020617; color: white; font-family: 'Montserrat', sans-serif; }
+        .svg-container { background-color: #0f172a; border: 1px solid #1e293b; border-radius: 16px; padding: 2rem; display: flex; justify-content: center; align-items: center; }
+    </style>
+</head>
+<body class="p-10">
+    <div class="max-w-5xl mx-auto">
+        <h1 class="text-4xl font-bold mb-2">Identidade Visual (Foco Comercial)</h1>
+        <p class="text-slate-400 mb-10">Logotipos em vetor (SVG) focados em Promoções e Varejo para a Eletropasso.</p>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <!-- Coluna 1: Favicon -->
+            <div class="col-span-1 flex flex-col gap-4">
+                <h2 class="text-xl font-bold text-slate-300">Ícone / Favicon</h2>
+                <p class="text-sm text-slate-500">A aba do navegador gritando "Promoção".</p>
+                <div class="svg-container aspect-square">
+                    <svg viewBox="0 0 500 500" class="w-full h-full drop-shadow-2xl" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                            <linearGradient id="redBg" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stop-color="#ef4444" />
+                                <stop offset="100%" stop-color="#991b1b" />
+                            </linearGradient>
+                            <linearGradient id="yellowTag" x1="0%" y1="0%" x2="0%" y2="100%">
+                                <stop offset="0%" stop-color="#fde047" />
+                                <stop offset="100%" stop-color="#d97706" />
+                            </linearGradient>
+                            <filter id="shadowFav">
+                              <feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#000" flood-opacity="0.5"/>
+                            </filter>
+                        </defs>
+                        <!-- Fundo App Vermelho -->
+                        <rect width="500" height="500" rx="120" fill="url(#redBg)" filter="url(#shadowFav)" />
+                        
+                        <!-- Alvo (Target) de Marketing -->
+                        <circle cx="250" cy="250" r="140" fill="none" stroke="#ffffff" stroke-width="40" opacity="0.9" />
+                        <circle cx="250" cy="250" r="60" fill="#ffffff" opacity="0.9" />
+                        
+                        <!-- Etiqueta de Preço / Oferta (Substituindo o Raio) -->
+                        <g transform="rotate(-30 250 250)">
+                            <!-- Corpo da Etiqueta -->
+                            <path d="M 120 250 L 220 150 L 420 150 L 420 350 L 220 350 Z" fill="url(#yellowTag)" stroke="#0f172a" stroke-width="20" stroke-linejoin="round" filter="url(#shadowFav)"/>
+                            <!-- Furo da Etiqueta -->
+                            <circle cx="180" cy="250" r="18" fill="#b91c1c" stroke="#0f172a" stroke-width="10" />
+                            <!-- Símbolo de % -->
+                            <text x="320" y="295" font-family="'Oswald', sans-serif" font-weight="700" font-size="120" fill="#0f172a" text-anchor="middle">%</text>
+                        </g>
+                    </svg>
+                </div>
+            </div>
+
+            <!-- Coluna 2: Logo Completo -->
+            <div class="col-span-2 flex flex-col gap-4">
+                <h2 class="text-xl font-bold text-slate-300">Logo Horizontal Principal</h2>
+                <p class="text-sm text-slate-500">Para o cabeçalho (navbar) do sistema gerador.</p>
+                <div class="svg-container flex-grow">
+                    <svg viewBox="0 0 850 200" class="w-full h-auto" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                            <linearGradient id="redBg2" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stop-color="#ef4444" />
+                                <stop offset="100%" stop-color="#991b1b" />
+                            </linearGradient>
+                            <linearGradient id="yellowTag2" x1="0%" y1="0%" x2="0%" y2="100%">
+                                <stop offset="0%" stop-color="#fde047" />
+                                <stop offset="100%" stop-color="#d97706" />
+                            </linearGradient>
+                            <filter id="shadowLogo">
+                              <feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#000" flood-opacity="0.5"/>
+                            </filter>
+                        </defs>
+                        <!-- Ícone -->
+                        <g transform="translate(0, 10) scale(0.36)">
+                            <rect width="500" height="500" rx="120" fill="url(#redBg2)" />
+                            <circle cx="250" cy="250" r="140" fill="none" stroke="#ffffff" stroke-width="40" opacity="0.9" />
+                            <circle cx="250" cy="250" r="60" fill="#ffffff" opacity="0.9" />
+                            <g transform="rotate(-30 250 250)">
+                                <path d="M 120 250 L 220 150 L 420 150 L 420 350 L 220 350 Z" fill="url(#yellowTag2)" stroke="#0f172a" stroke-width="20" stroke-linejoin="round" filter="url(#shadowLogo)"/>
+                                <circle cx="180" cy="250" r="18" fill="#b91c1c" stroke="#0f172a" stroke-width="10" />
+                                <text x="320" y="295" font-family="'Oswald', sans-serif" font-weight="700" font-size="120" fill="#0f172a" text-anchor="middle">%</text>
+                            </g>
+                        </g>
+                        <!-- Texto -->
+                        <text x="215" y="80" font-family="'Montserrat', sans-serif" font-weight="900" font-size="34" fill="#94a3b8" letter-spacing="4">CENTRAL DE MARKETING</text>
+                        <text x="210" y="155" font-family="'Oswald', sans-serif" font-weight="700" font-size="75" fill="#ef4444" letter-spacing="1">ELETRO<tspan fill="#ffffff">PASSO</tspan></text>
+                    </svg>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Explicação do Conceito -->
+        <div class="mt-10 p-6 bg-slate-900 border border-slate-700 rounded-xl">
+            <h3 class="text-lg font-bold text-white mb-2">Conceito do Design: O Alvo Promocional</h3>
+            <ul class="list-disc list-inside text-slate-400 space-y-2">
+                <li><strong class="text-white">O Alvo de Fundo:</strong> Mantemos o alvo branco, pois ele representa o marketing e a estratégia de vendas.</li>
+                <li><strong class="text-white">A Etiqueta de Oferta (NOVO):</strong> Substituí o raio por uma <strong>Etiqueta de Preço Varejista</strong> sobreposta. Esse é o símbolo universal de comércio, ofertas e encartes promocionais.</li>
+                <li><strong class="text-white">O Símbolo de %:</strong> Cravado no meio da etiqueta com uma fonte pesada, deixa absolutamente claro para o usuário (ou operador do sistema) que aquela ferramenta é uma máquina de gerar preços e descontos.</li>
+                <li><strong class="text-white">Cores de Varejo:</strong> O contraste do fundo vermelho escuro com o amarelo da etiqueta grita "Promoção", alinhando-se totalmente com o visual dos encartes que o sistema vai gerar.</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>

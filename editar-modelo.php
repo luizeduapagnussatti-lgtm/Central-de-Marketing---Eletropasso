@@ -63,9 +63,7 @@ $textosEditor = [
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title><?= htmlspecialchars($page_title) ?> — Eletropasso</title>
+<?php require marketing_path('views/partials/app_head.php'); ?>
 <link rel="stylesheet" href="assets/brand/tokens.css">
 <link rel="stylesheet" href="public/css/editor-modelo.css">
 <script src="https://cdn.tailwindcss.com"></script>
@@ -115,7 +113,7 @@ tailwind.config = {
     </select>
     <button type="button" id="btn-salvar" class="editor-btn editor-btn--primary">Salvar</button>
     <button type="button" id="btn-exportar-png" class="editor-btn editor-btn--secondary">Exportar PNG</button>
-    <a href="gerenciar-modelos.php" class="editor-btn editor-btn--ghost">Voltar</a>
+      <a href="gerenciar-modelos.php" class="editor-btn editor-btn--ghost" id="btn-voltar">Voltar</a>
   </div>
 </header>
 
@@ -136,7 +134,7 @@ tailwind.config = {
       <section id="tab-upload" class="editor-tab-panel" role="tabpanel">
         <div class="editor-section">
           <h4 class="editor-section-title">Upload de elemento</h4>
-          <p class="editor-section-desc">Envie PNG/JPG/WebP. O Rembg remove o fundo e insere no canvas.</p>
+          <p class="editor-section-desc">Produtos e elementos avulsos (fundo removido). Para o design completo de fundo, use a aba <strong>Fundo</strong>.</p>
           <label class="editor-upload-btn">
             <input type="file" id="input-upload-elemento" accept="image/png,image/jpeg,image/webp" hidden>
             <span>Selecionar imagem</span>
@@ -179,24 +177,37 @@ tailwind.config = {
         </div>
         <div class="editor-section editor-section--bordered">
           <h4 class="editor-section-title">Palco estatico</h4>
-          <p class="editor-section-desc">PNG/JPEG com dimensao exata do formato selecionado.</p>
+          <p class="editor-section-desc">PNG/JPEG na proporcao do formato. Duplo clique no fundo do canvas ou use os botoes abaixo para encaixar a imagem.</p>
           <label class="editor-upload-btn">
             <input type="file" id="input-upload-fundo" accept="image/png,image/jpeg" hidden>
             <span>Enviar palco</span>
           </label>
           <p id="fundo-status" class="editor-status-text"></p>
+          <div class="editor-palco-controls">
+            <button type="button" id="fundo-palco-edit" class="editor-btn editor-btn--secondary editor-btn--block">Ajustar posicao e zoom</button>
+            <button type="button" id="fundo-palco-fit-contain" class="editor-btn editor-btn--secondary editor-btn--block">Mostrar imagem inteira</button>
+            <button type="button" id="fundo-palco-fit-cover" class="editor-btn editor-btn--primary editor-btn--block">Preencher canvas</button>
+            <div class="props-field">
+              <label for="fundo-palco-zoom" class="editor-field-label">Zoom</label>
+              <div class="props-range-row">
+                <input type="range" id="fundo-palco-zoom" min="25" max="300" step="1" class="props-range" value="100">
+                <span class="props-range-val"><span id="fundo-palco-zoom-val">100</span>%</span>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
       <section id="tab-textos" class="editor-tab-panel hidden" role="tabpanel" hidden>
         <div class="editor-section">
           <h4 class="editor-section-title">Textos promocionais</h4>
-          <p class="editor-section-desc">Alteracoes refletem no canvas em tempo real.</p>
+          <p class="editor-section-desc">Edite o conteudo e use <strong>Posicionar no canvas</strong> para arrastar titulos e badge no encarte.</p>
           <?php foreach ($textosEditor as $chave => $meta):
               if (!array_key_exists($chave, $config['textos'] ?? []) && !in_array($chave, ['titulo_linha1', 'titulo_linha2', 'badge_oferta'], true)) {
                   continue;
               }
               $valor = htmlspecialchars((string) ($config['textos'][$chave] ?? ''), ENT_QUOTES, 'UTF-8');
+              $posicionavel = in_array($chave, ['titulo_linha1', 'titulo_linha2', 'badge_oferta'], true);
           ?>
           <div class="editor-text-field">
             <label for="<?= $meta['id'] ?>" class="editor-field-label"><?= $meta['label'] ?></label>
@@ -207,6 +218,15 @@ tailwind.config = {
               data-texto="<?= $chave ?>"
               value="<?= $valor ?>"
             >
+            <?php if ($posicionavel): ?>
+            <button
+              type="button"
+              class="editor-btn editor-btn--secondary editor-btn--sm editor-text-pos-btn"
+              data-posicionar-texto="<?= $chave ?>"
+            >
+              Posicionar no canvas
+            </button>
+            <?php endif; ?>
           </div>
           <?php endforeach; ?>
         </div>
@@ -214,15 +234,29 @@ tailwind.config = {
 
       <section id="tab-produtos" class="editor-tab-panel hidden" role="tabpanel" hidden>
         <div class="editor-section">
-          <h4 class="editor-section-title">Zona de produto</h4>
-          <p class="editor-section-desc">Define onde a foto do produto aparecera no encarte final.</p>
-          <button type="button" id="btn-add-zona" class="editor-btn editor-btn--primary editor-btn--block">
-            + Zona de Produto
+          <h4 class="editor-section-title">Bloco de zonas dinamicas</h4>
+          <p class="editor-section-desc">Cada produto do encarte usa um bloco com foto, nome, preco normal, preco promo e unidade. Monte o primeiro bloco, depois duplique-o inteiro para os demais slots.</p>
+          <button type="button" id="btn-add-card" class="editor-btn editor-btn--primary editor-btn--block">
+            + Novo bloco (modelo padrao)
+          </button>
+          <button type="button" id="btn-duplicar-bloco" class="editor-btn editor-btn--secondary editor-btn--block">
+            Duplicar bloco selecionado
+          </button>
+          <button type="button" id="btn-agrupar-bloco" class="editor-btn editor-btn--secondary editor-btn--block">
+            Agrupar selecao como bloco
+          </button>
+          <p class="editor-section-desc editor-section-desc--hint">Dica: Shift+clique para selecionar foto + textos do mesmo produto. Depois use <strong>Agrupar</strong> (move junto) ou <strong>Duplicar</strong> (copia tudo para o proximo produto).</p>
+        </div>
+        <div class="editor-section editor-section--bordered">
+          <h4 class="editor-section-title">Zona legada (somente foto)</h4>
+          <p class="editor-section-desc">Use apenas se precisar de compatibilidade com modelos antigos.</p>
+          <button type="button" id="btn-add-zona" class="editor-btn editor-btn--secondary editor-btn--block">
+            + Zona de Produto (legado)
           </button>
         </div>
         <div class="editor-section editor-section--bordered">
-          <h4 class="editor-section-title">Variaveis de texto</h4>
-          <p class="editor-section-desc">Inseridas no canvas e vinculadas a um produto na geracao do encarte.</p>
+          <h4 class="editor-section-title">Variaveis avulsas</h4>
+          <p class="editor-section-desc">Adicione campos soltos e depois agrupe com a zona de foto em um bloco unico.</p>
           <div class="var-btn-grid">
             <button type="button" class="var-btn" data-vartype="nome_produto">[NOME_PRODUTO]</button>
             <button type="button" class="var-btn" data-vartype="preco_normal">[PRECO_NORMAL] riscado</button>
@@ -251,6 +285,9 @@ tailwind.config = {
 
   <main class="editor-workspace flex-1 overflow-auto flex items-start justify-center">
     <div id="canvas-wrapper" class="relative shadow-2xl">
+      <div id="palco-edit-hint" class="palco-edit-hint hidden" hidden>
+        Modo ajuste — arraste para mover · cantos para zoom · Esc ou duplo clique para sair
+      </div>
       <canvas id="editor-canvas"></canvas>
     </div>
   </main>
@@ -325,6 +362,21 @@ tailwind.config = {
         </p>
       </section>
 
+      <section id="props-card" class="props-section hidden">
+        <div class="zone-badge">Card de Produto</div>
+        <p class="props-zone-info">
+          Este card sera preenchido automaticamente com foto, nome, precos e unidade
+          do produto correspondente na geracao do encarte.
+        </p>
+        <div class="props-field">
+          <label for="prop-card-index" class="editor-field-label">Produto N.</label>
+          <input type="number" id="prop-card-index" min="1" max="24" class="editor-text-input" readonly>
+        </div>
+        <button type="button" id="btn-duplicar-card" class="editor-btn editor-btn--primary editor-btn--block">
+          Duplicar bloco inteiro
+        </button>
+      </section>
+
       <section id="props-zona" class="props-section hidden">
         <div class="zone-badge">Zona de Produto</div>
         <p class="props-zone-info">
@@ -349,6 +401,21 @@ tailwind.config = {
         <button type="button" id="prop-duplicar" class="editor-btn editor-btn--secondary editor-btn--block">Duplicar</button>
       </section>
 
+      <section id="props-palco" class="props-section hidden">
+        <h4 class="editor-section-title">Design de fundo</h4>
+        <p class="editor-section-desc">Duplo clique no fundo do canvas para mover e redimensionar como no Canva.</p>
+        <button type="button" id="prop-palco-edit" class="editor-btn editor-btn--secondary editor-btn--block">Ajustar posicao e zoom</button>
+        <button type="button" id="prop-palco-fit-contain" class="editor-btn editor-btn--secondary editor-btn--block">Mostrar imagem inteira</button>
+        <button type="button" id="prop-palco-fit-cover" class="editor-btn editor-btn--primary editor-btn--block">Preencher canvas</button>
+        <div class="props-field">
+          <label for="prop-palco-zoom" class="editor-field-label">Zoom</label>
+          <div class="props-range-row">
+            <input type="range" id="prop-palco-zoom" min="25" max="300" step="1" class="props-range" value="100">
+            <span class="props-range-val"><span id="prop-palco-zoom-val">100</span>%</span>
+          </div>
+        </div>
+      </section>
+
       <section id="props-vetor" class="props-section hidden">
         <h4 class="editor-section-title">Vetor</h4>
         <div class="props-field">
@@ -365,7 +432,10 @@ tailwind.config = {
       </section>
 
       <section id="props-comum" class="props-section hidden">
-        <h4 class="editor-section-title">Camadas</h4>
+        <h4 class="editor-section-title">Elemento</h4>
+        <button type="button" id="prop-duplicar-comum" class="editor-btn editor-btn--secondary editor-btn--block">Duplicar</button>
+        <button type="button" id="prop-bloquear" class="editor-btn editor-btn--secondary editor-btn--block">Bloquear elemento</button>
+        <h4 class="editor-section-title editor-section-title--spaced">Camadas</h4>
         <div class="props-layer-grid">
           <button type="button" id="prop-layer-forward" class="props-layer-btn" title="Trazer para frente">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 16h4v-4H4v4zm0 4h4v-4H4v4zm0-8h4V8H4v4zm4 4h12v-4H8v4zm0 4h12v-4H8v4zm0-8h12V8H8v4z"/></svg>
@@ -402,6 +472,16 @@ tailwind.config = {
     <p class="loader-msg">Aguarde.</p>
   </div>
 </div>
+
+<nav id="editor-context-menu" class="editor-context-menu hidden" hidden aria-label="Menu do elemento">
+  <button type="button" data-action="duplicate">Duplicar</button>
+  <button type="button" data-action="lock">Bloquear</button>
+  <button type="button" data-action="forward">Trazer para frente</button>
+  <button type="button" data-action="backward">Enviar para tras</button>
+  <button type="button" data-action="front">Trazer para o topo</button>
+  <hr>
+  <button type="button" data-action="delete" class="is-danger">Excluir</button>
+</nav>
 
 <script>
 const EDITOR_DATA = <?= json_encode($editorData, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE) ?>;

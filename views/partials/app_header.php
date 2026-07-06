@@ -8,15 +8,19 @@ $nav_active = $nav_active ?? 'galeria';
   <div class="app-container app-header-inner">
     <div class="app-header-left">
       <?php
-      $logo_header = marketing_logo_relativo('preta');
-      $logo_full = marketing_path($logo_header);
-      if (is_file($logo_full)):
-          $logo_src = $logo_header . '?v=' . filemtime($logo_full);
+      $logo_header = marketing_logo_header_relativo();
+      $logo_src = marketing_brand_asset_url($logo_header);
+      $logo_is_svg = str_ends_with(strtolower($logo_header), '.svg');
       ?>
-        <a href="index.php" class="app-logo-link">
-          <img class="logo" src="<?= htmlspecialchars($logo_src, ENT_QUOTES, 'UTF-8') ?>" alt="Eletropasso">
+        <a href="index.php" class="app-logo-link" aria-label="Central de Marketing Eletropasso — inicio">
+          <img
+            class="logo<?= $logo_is_svg ? ' logo--central-marketing' : '' ?>"
+            src="<?= htmlspecialchars($logo_src, ENT_QUOTES, 'UTF-8') ?>"
+            alt="Central de Marketing Eletropasso"
+            width="340"
+            height="80"
+          >
         </a>
-      <?php endif; ?>
     </div>
     <nav class="app-nav" aria-label="Navegacao principal">
       <a href="index.php" class="nav-pill<?= $nav_active === 'galeria' ? ' active' : '' ?>">

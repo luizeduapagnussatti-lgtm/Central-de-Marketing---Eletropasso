@@ -24,11 +24,7 @@ $modelos = $encarteService->listarModelos();
 
 <head>
 
-<meta charset="UTF-8">
-
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-<title><?= htmlspecialchars($page_title) ?> — Eletropasso</title>
+<?php require marketing_path('views/partials/app_head.php'); ?>
 
 <link rel="stylesheet" href="assets/brand/tokens.css">
 

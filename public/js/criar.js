@@ -52,6 +52,7 @@ function addItem(data = {}) {
     caminho_foto_original: data.caminho_foto_original || '',
     caminho_foto_limpa: data.caminho_foto_limpa || '',
     processamento_imagem_status: data.processamento_imagem_status || 'pendente',
+    processamento_imagem_erro: data.processamento_imagem_erro || '',
   });
 
   renderItens();
@@ -86,6 +87,7 @@ function renderItens() {
               ? `<img src="${escAttr(item.caminho_foto_limpa)}" alt="">`
               : '<span style="font-size:10px;color:#9ca3af;text-align:center;padding:4px">Sem foto</span>'}
           </div>
+          ${renderFotoStatus(item, i)}
         </div>
         <div class="item-fields">
           <div class="item-field-row item-field-row--sku">
@@ -111,11 +113,11 @@ function renderItens() {
           <div class="item-field-row item-field-row--precos">
             <div class="item-field-wrap">
               <span class="item-field-label">Preco De</span>
-              <input type="number" step="0.01" placeholder="0,00" value="${item.preco_normal}" data-field="preco_normal" data-index="${i}">
+              <input type="text" inputmode="decimal" class="input-preco-br" placeholder="0,00" value="${esc(formatPrecoDisplay(item.preco_normal))}" data-field="preco_normal" data-price-mask data-index="${i}">
             </div>
             <div class="item-field-wrap item-field-wrap--preco-por">
               <span class="item-field-label">Preco Por</span>
-              <input type="number" step="0.01" class="input-preco-por" placeholder="0,00" value="${item.preco_promocional}" data-field="preco_promocional" data-index="${i}">
+              <input type="text" inputmode="decimal" class="input-preco-por input-preco-br" placeholder="0,00" value="${esc(formatPrecoDisplay(item.preco_promocional))}" data-field="preco_promocional" data-price-mask data-index="${i}">
             </div>
             <div class="item-field-wrap">
               <span class="item-field-label">Unidade</span>
@@ -125,6 +127,9 @@ function renderItens() {
               Enviar foto
               <input type="file" accept="image/*" hidden onchange="uploadFoto(${i}, this)">
             </label>
+            ${item.caminho_foto_original && item.processamento_imagem_status === 'erro'
+              ? `<button type="button" class="btn btn-sm btn-secondary" onclick="reprocessarFundo(${i})">Reprocessar fundo</button>`
+              : ''}
           </div>
         </div>
       </div>
@@ -132,8 +137,8 @@ function renderItens() {
         <div class="preview-card">
           <span class="badge">Oferta Especial!</span>
           <div class="nome">${esc(item.nome_comercial || 'Produto')}</div>
-          <div class="preco-de">${item.preco_normal ? formatMoney(item.preco_normal) : 'De: --'}</div>
-          <div class="preco-por">${item.preco_promocional ? formatMoney(item.preco_promocional) : 'Por: --'}</div>
+          <div class="preco-de">${item.preco_normal ? formatMoney(brToFloat(item.preco_normal)) : 'De: --'}</div>
+          <div class="preco-por">${item.preco_promocional ? formatMoney(brToFloat(item.preco_promocional)) : 'Por: --'}</div>
         </div>
       </aside>
       </div>
@@ -154,6 +159,29 @@ function renderItens() {
       renderItens();
     });
   });
+
+  bindPriceMasks(lista);
+}
+
+function formatPrecoDisplay(value) {
+  if (value === null || value === undefined || value === '') return '';
+  if (typeof value === 'string' && value.includes(',')) return value;
+  return floatToBr(value);
+}
+
+function renderFotoStatus(item, index) {
+  const status = item.processamento_imagem_status || 'pendente';
+  if (status === 'pendente' && !item.caminho_foto_limpa) return '';
+
+  const cls = status === 'ok' ? 'foto-status--ok' : 'foto-status--erro';
+  const label = status === 'ok' ? 'Fundo removido' : 'Fundo nao removido';
+  const erro = item.processamento_imagem_erro
+    ? `<span class="foto-status-erro-msg" title="${escAttr(item.processamento_imagem_erro)}">${esc(item.processamento_imagem_erro)}</span>`
+    : '';
+
+  return `<div class="foto-status ${cls}" data-foto-status="${index}">
+    <span class="foto-status-badge">${label}</span>${erro}
+  </div>`;
 }
 
 function onDragStart(e) {
@@ -186,7 +214,7 @@ async function buscarSku(index) {
     itens[index].sku = data.sku;
     itens[index].nome_erp = data.nome_erp;
     itens[index].nome_comercial = data.nome_comercial;
-    itens[index].preco_normal = data.preco_venda_atual;
+    itens[index].preco_normal = floatToBr(data.preco_venda_atual);
     renderItens();
     flashHubStatus(index, 'Produto encontrado no Hub.', 'success');
   } catch (e) {
@@ -256,9 +284,37 @@ async function uploadFoto(index, input) {
     itens[index].caminho_foto_original = data.caminho_foto_original;
     itens[index].caminho_foto_limpa = data.caminho_foto_limpa;
     itens[index].processamento_imagem_status = data.processamento_imagem_status;
+    itens[index].processamento_imagem_erro = data.processamento_imagem_erro || '';
     renderItens();
+    if (data.processamento_imagem_status === 'erro') {
+      alert('Aviso: o fundo da imagem nao foi removido.\n\n' + (data.processamento_imagem_erro || 'Rembg indisponivel.'));
+    }
   } catch (e) {
     alert('Upload: ' + e.message);
+  } finally {
+    hideLoader();
+  }
+}
+
+async function reprocessarFundo(index) {
+  const original = itens[index]?.caminho_foto_original;
+  if (!original) {
+    alert('Envie uma foto antes de reprocessar.');
+    return;
+  }
+
+  try {
+    showLoader('Reprocessando fundo...');
+    const data = await apiCall('encarte', 'reprocessar_fundo', {
+      method: 'POST',
+      body: { caminho_foto_original: original },
+    });
+    itens[index].caminho_foto_limpa = data.caminho_foto_limpa;
+    itens[index].processamento_imagem_status = data.processamento_imagem_status;
+    itens[index].processamento_imagem_erro = data.processamento_imagem_erro || '';
+    renderItens();
+  } catch (e) {
+    alert('Reprocessar: ' + e.message);
   } finally {
     hideLoader();
   }
@@ -290,8 +346,8 @@ function validarFormulario() {
   if (itensValidos.length === 0) { alert('Adicione ao menos um produto.'); return false; }
 
   for (const item of itensValidos) {
-    const de = parseFloat(item.preco_normal);
-    const por = parseFloat(item.preco_promocional);
+    const de = brToFloat(item.preco_normal);
+    const por = brToFloat(item.preco_promocional);
     if (isNaN(de) || isNaN(por) || por <= 0) {
       alert(`Precos invalidos para "${item.nome_comercial}".`);
       return false;
@@ -320,7 +376,11 @@ async function salvarEncarte(gerar = false) {
     mes_vigencia: new Date().getMonth() + 1,
     ano_vigencia: new Date().getFullYear(),
     status: 'rascunho',
-    itens: itens.filter(i => i.nome_comercial.trim()),
+    itens: itens.filter(i => i.nome_comercial.trim()).map(item => ({
+      ...item,
+      preco_normal: brToFloat(item.preco_normal),
+      preco_promocional: brToFloat(item.preco_promocional),
+    })),
   };
 
   try {

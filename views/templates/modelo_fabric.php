@@ -85,7 +85,7 @@ body {
 }
 
 .encarte-palco-img {
-  object-fit: cover;
+  object-fit: fill;
 }
 </style>
 </head>

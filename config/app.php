@@ -103,6 +103,29 @@ function marketing_format_date_br(?string $date): string
     return $ts ? date('d/m/Y', $ts) : '';
 }
 
+/** URL de asset de marca com cache-bust por filemtime. */
+function marketing_brand_asset_url(string $relative): string
+{
+    $relative = ltrim(str_replace('\\', '/', $relative), '/');
+    $full = marketing_path($relative);
+    if (!is_file($full)) {
+        return $relative;
+    }
+
+    return $relative . '?v=' . filemtime($full);
+}
+
+/** Caminho relativo da logo horizontal da Central de Marketing (navbar). */
+function marketing_logo_header_relativo(): string
+{
+    $preferida = 'assets/brand/logo_central_marketing.svg';
+    if (is_file(marketing_path($preferida))) {
+        return $preferida;
+    }
+
+    return marketing_logo_relativo('preta');
+}
+
 /** Caminho relativo da logo por variante (preta=fundo claro, branca=fundo escuro). */
 function marketing_logo_relativo(string $variante = 'preta'): string
 {
@@ -327,21 +350,225 @@ function ep_get_dynamic_text_value(string $textType, int $linkedZone, array $ite
     };
 }
 
+/**
+ * Calcula bounding box top-left a partir das coordenadas Fabric (considera originX/originY).
+ *
+ * @return array{left: float, top: float, width: float, height: float}
+ */
+function ep_fabric_bbox(array $obj): array
+{
+    $left = (float) ($obj['left'] ?? 0);
+    $top = (float) ($obj['top'] ?? 0);
+    $scaleX = (float) ($obj['scaleX'] ?? 1);
+    $scaleY = (float) ($obj['scaleY'] ?? 1);
+    $width = max(1, (float) ($obj['width'] ?? 0) * abs($scaleX));
+    $height = max(1, (float) ($obj['height'] ?? 0) * abs($scaleY));
+    $originX = (string) ($obj['originX'] ?? 'left');
+    $originY = (string) ($obj['originY'] ?? 'top');
+
+    if ($originX === 'center') {
+        $left -= $width / 2;
+    } elseif ($originX === 'right') {
+        $left -= $width;
+    }
+
+    if ($originY === 'center') {
+        $top -= $height / 2;
+    } elseif ($originY === 'bottom') {
+        $top -= $height;
+    }
+
+    return [
+        'left'   => $left,
+        'top'    => $top,
+        'width'  => $width,
+        'height' => $height,
+    ];
+}
+
+/** CSS text-shadow a partir do objeto shadow do Fabric. */
+function ep_fabric_text_shadow_css(array $obj): string
+{
+    if (empty($obj['shadow']) || !is_array($obj['shadow'])) {
+        return '';
+    }
+
+    $sx = (float) ($obj['shadow']['offsetX'] ?? 0);
+    $sy = (float) ($obj['shadow']['offsetY'] ?? 0);
+    $blur = (float) ($obj['shadow']['blur'] ?? 0);
+    $color = (string) ($obj['shadow']['color'] ?? 'rgba(0,0,0,0.45)');
+
+    return sprintf('text-shadow:%spx %spx %spx %s;', $sx, $sy, $blur, $color);
+}
+
+/**
+ * Posicao absoluta de um filho dentro de um grupo Fabric.
+ *
+ * @return array{left: float, top: float, width: float, height: float}
+ */
+function ep_fabric_group_child_bbox(array $group, array $child): array
+{
+    $groupBbox = ep_fabric_bbox($group);
+    $centerX = $groupBbox['left'] + ($groupBbox['width'] / 2);
+    $centerY = $groupBbox['top'] + ($groupBbox['height'] / 2);
+    $gScaleX = abs((float) ($group['scaleX'] ?? 1));
+    $gScaleY = abs((float) ($group['scaleY'] ?? 1));
+    $cScaleX = abs((float) ($child['scaleX'] ?? 1));
+    $cScaleY = abs((float) ($child['scaleY'] ?? 1));
+
+    $relLeft = (float) ($child['left'] ?? 0);
+    $relTop = (float) ($child['top'] ?? 0);
+    $width = max(1, (float) ($child['width'] ?? 0) * $cScaleX * $gScaleX);
+    $height = max(1, (float) ($child['height'] ?? 0) * $cScaleY * $gScaleY);
+
+    $absLeft = $centerX + ($relLeft * $gScaleX);
+    $absTop = $centerY + ($relTop * $gScaleY);
+
+    $originX = (string) ($child['originX'] ?? 'left');
+    $originY = (string) ($child['originY'] ?? 'top');
+    if ($originX === 'center') {
+        $absLeft -= $width / 2;
+    } elseif ($originX === 'right') {
+        $absLeft -= $width;
+    }
+    if ($originY === 'center') {
+        $absTop -= $height / 2;
+    } elseif ($originY === 'bottom') {
+        $absTop -= $height;
+    }
+
+    return [
+        'left'   => $absLeft,
+        'top'    => $absTop,
+        'width'  => $width,
+        'height' => $height,
+    ];
+}
+
+/** Renderiza card de produto completo (grupo Fabric com foto + textos). */
+function ep_render_product_card(array $group, string $base_path, array $itens): string
+{
+    $productIndex = (int) ($group['productIndex'] ?? $group['zoneId'] ?? 1);
+    $idx = $productIndex - 1;
+    $item = ($idx >= 0 && isset($itens[$idx])) ? $itens[$idx] : null;
+    $html = '';
+
+    foreach ($group['objects'] ?? [] as $child) {
+        if (!is_array($child)) {
+            continue;
+        }
+
+        $part = (string) ($child['cardPart'] ?? '');
+        if ($part === 'label' || $part === 'frame') {
+            continue;
+        }
+
+        if ($part === '' && !empty($child['isProductZone']) && empty($child['isProductCard'])) {
+            $part = 'foto';
+        }
+
+        if ($part === '' && !empty($child['isDynamicText'])) {
+            $part = (string) ($child['textType'] ?? '');
+        }
+
+        if ($part === '') {
+            continue;
+        }
+
+        $childBbox = ep_fabric_group_child_bbox($group, $child);
+        $baseStyle = sprintf(
+            'position:absolute;left:%spx;top:%spx;',
+            $childBbox['left'],
+            $childBbox['top']
+        );
+
+        if ($part === 'foto') {
+            if ($item === null) {
+                continue;
+            }
+
+            $foto = marketing_encarte_foto_src($base_path, $item);
+            if ($foto === '') {
+                continue;
+            }
+
+            $alt = htmlspecialchars((string) ($item['nome_comercial'] ?? 'Produto'), ENT_QUOTES, 'UTF-8');
+            $fotoEsc = htmlspecialchars($foto, ENT_QUOTES, 'UTF-8');
+            $html .= sprintf(
+                '<img class="foto-flutuante foto-flutuante--forte fabric-zona-produto" data-zone-id="%d" src="%s" alt="%s" style="%swidth:%spx;height:%spx;object-fit:contain;">',
+                $productIndex,
+                $fotoEsc,
+                $alt,
+                $baseStyle,
+                $childBbox['width'],
+                $childBbox['height']
+            );
+            continue;
+        }
+
+        if (!empty($child['isDynamicText'])) {
+            $textType = (string) ($child['textType'] ?? $part);
+            $text = ep_get_dynamic_text_value($textType, $productIndex, $itens);
+            $fill = htmlspecialchars((string) ($child['fill'] ?? '#ffffff'), ENT_QUOTES, 'UTF-8');
+            $gScaleY = abs((float) ($group['scaleY'] ?? 1));
+            $cScaleY = abs((float) ($child['scaleY'] ?? 1));
+            $fontSize = max(8, (float) ($child['fontSize'] ?? 16) * $cScaleY * $gScaleY);
+            $fontWeight = (int) ($child['fontWeight'] ?? 400);
+            $fontFamily = htmlspecialchars((string) ($child['fontFamily'] ?? 'Segoe UI, Arial, sans-serif'), ENT_QUOTES, 'UTF-8');
+            $textAlign = htmlspecialchars((string) ($child['textAlign'] ?? 'left'), ENT_QUOTES, 'UTF-8');
+            $cScaleX = abs((float) ($child['scaleX'] ?? 1));
+            $gScaleX = abs((float) ($group['scaleX'] ?? 1));
+            $width = (float) ($child['width'] ?? 0);
+            $widthCss = $width > 0 ? 'width:' . ($width * $cScaleX * $gScaleX) . 'px;' : '';
+            $linethroughCss = !empty($child['linethrough']) ? 'text-decoration:line-through;' : '';
+            $shadowCss = ep_fabric_text_shadow_css($child);
+
+            $class = 'fabric-text';
+            if ($textType === 'preco_promo') {
+                $class .= ' font-display preco-3d';
+            }
+
+            $html .= sprintf(
+                '<div class="%s" data-card-part="%s" data-product-index="%d" style="%s%sfont-size:%spx;font-weight:%d;font-family:%s;color:%s;text-align:%s;white-space:pre-wrap;line-height:1.1;%s%s">%s</div>',
+                $class,
+                htmlspecialchars($part, ENT_QUOTES, 'UTF-8'),
+                $productIndex,
+                $baseStyle,
+                $widthCss,
+                $fontSize,
+                $fontWeight,
+                $fontFamily,
+                $fill,
+                $textAlign,
+                $linethroughCss,
+                $shadowCss,
+                nl2br($text)
+            );
+        }
+    }
+
+    return $html;
+}
+
 function ep_render_fabric_object(array $obj, string $base_path, array $itens = []): string
 {
     $type = (string) ($obj['type'] ?? '');
     $name = (string) ($obj['name'] ?? '');
-    $left = (float) ($obj['left'] ?? 0);
-    $top = (float) ($obj['top'] ?? 0);
-    $angle = (float) ($obj['angle'] ?? 0);
-    $opacity = (float) ($obj['opacity'] ?? 1);
-    $scaleX = (float) ($obj['scaleX'] ?? 1);
-    $scaleY = (float) ($obj['scaleY'] ?? 1);
     $visible = ($obj['visible'] ?? true) !== false;
 
     if (!$visible || $name === 'fundo-editor') {
         return '';
     }
+
+    if (!empty($obj['isProductCard']) && $type === 'group') {
+        return ep_render_product_card($obj, $base_path, $itens);
+    }
+
+    $bbox = ep_fabric_bbox($obj);
+    $left = $bbox['left'];
+    $top = $bbox['top'];
+    $angle = (float) ($obj['angle'] ?? 0);
+    $opacity = (float) ($obj['opacity'] ?? 1);
 
     $transform = $angle !== 0.0 ? ' transform:rotate(' . $angle . 'deg); transform-origin:top left;' : '';
     $baseStyle = sprintf(
@@ -352,10 +579,10 @@ function ep_render_fabric_object(array $obj, string $base_path, array $itens = [
         $transform
     );
 
-    if (!empty($obj['isProductZone'])) {
+    if (!empty($obj['isProductZone']) && empty($obj['isProductCard'])) {
         $zoneId = (int) ($obj['zoneId'] ?? 0);
-        $width = max(1, (float) ($obj['width'] ?? 0) * abs($scaleX));
-        $height = max(1, (float) ($obj['height'] ?? 0) * abs($scaleY));
+        $width = $bbox['width'];
+        $height = $bbox['height'];
 
         $idx = $zoneId - 1;
         $item = ($idx >= 0 && isset($itens[$idx])) ? $itens[$idx] : null;
@@ -407,15 +634,14 @@ function ep_render_fabric_object(array $obj, string $base_path, array $itens = [
             return '';
         }
 
-        $width = max(1, (float) ($obj['width'] ?? 0) * abs($scaleX));
-        $height = max(1, (float) ($obj['height'] ?? 0) * abs($scaleY));
+        $width = $bbox['width'];
+        $height = $bbox['height'];
         $alt = htmlspecialchars($name !== '' ? $name : 'Elemento', ENT_QUOTES, 'UTF-8');
         $srcEsc = htmlspecialchars($src, ENT_QUOTES, 'UTF-8');
 
         $extraClass = $name === 'palco' ? ' encarte-palco-img' : '';
-        $filter = $name === 'elemento-produto' || str_starts_with($name, 'elemento')
-            ? ' style="' . $baseStyle . 'width:' . $width . 'px;height:' . $height . 'px;"'
-            : ' style="' . $baseStyle . 'width:' . $width . 'px;height:' . $height . 'px;"';
+        $objectFit = $name === 'palco' ? 'object-fit:contain;' : '';
+        $filter = ' style="' . $baseStyle . 'width:' . $width . 'px;height:' . $height . 'px;' . $objectFit . '"';
 
         $imgClass = ($name === 'elemento-produto' || str_starts_with($name, 'elemento'))
             ? ' class="foto-flutuante foto-flutuante--forte' . $extraClass . '"'
@@ -425,8 +651,8 @@ function ep_render_fabric_object(array $obj, string $base_path, array $itens = [
     }
 
     if ($type === 'rect') {
-        $width = max(1, (float) ($obj['width'] ?? 0) * abs($scaleX));
-        $height = max(1, (float) ($obj['height'] ?? 0) * abs($scaleY));
+        $width = $bbox['width'];
+        $height = $bbox['height'];
         $fill = htmlspecialchars((string) ($obj['fill'] ?? 'transparent'), ENT_QUOTES, 'UTF-8');
         $rx = (float) ($obj['rx'] ?? 0);
         $radius = $rx > 0 ? 'border-radius:' . $rx . 'px;' : '';
@@ -452,13 +678,16 @@ function ep_render_fabric_object(array $obj, string $base_path, array $itens = [
         }
 
         $fill = htmlspecialchars((string) ($obj['fill'] ?? '#ffffff'), ENT_QUOTES, 'UTF-8');
+        $scaleY = (float) ($obj['scaleY'] ?? 1);
         $fontSize = max(8, (float) ($obj['fontSize'] ?? 16) * abs($scaleY));
         $fontWeight = (int) ($obj['fontWeight'] ?? 400);
         $fontFamily = htmlspecialchars((string) ($obj['fontFamily'] ?? 'Segoe UI, Arial, sans-serif'), ENT_QUOTES, 'UTF-8');
         $textAlign = htmlspecialchars((string) ($obj['textAlign'] ?? 'left'), ENT_QUOTES, 'UTF-8');
+        $scaleX = (float) ($obj['scaleX'] ?? 1);
         $width = (float) ($obj['width'] ?? 0);
         $widthCss = $width > 0 ? 'width:' . ($width * abs($scaleX)) . 'px;' : '';
         $linethroughCss = !empty($obj['linethrough']) ? 'text-decoration:line-through;' : '';
+        $shadowCss = ep_fabric_text_shadow_css($obj);
 
         $class = 'fabric-text';
         if (in_array($name, ['titulo_linha1', 'titulo_linha2'], true)) {
@@ -469,7 +698,7 @@ function ep_render_fabric_object(array $obj, string $base_path, array $itens = [
         }
 
         return sprintf(
-            '<div class="%s" data-name="%s" style="%s%sfont-size:%spx;font-weight:%d;font-family:%s;color:%s;text-align:%s;white-space:pre-wrap;line-height:1.1;%s">%s</div>',
+            '<div class="%s" data-name="%s" style="%s%sfont-size:%spx;font-weight:%d;font-family:%s;color:%s;text-align:%s;white-space:pre-wrap;line-height:1.1;%s%s">%s</div>',
             $class,
             htmlspecialchars($name, ENT_QUOTES, 'UTF-8'),
             $baseStyle,
@@ -480,6 +709,7 @@ function ep_render_fabric_object(array $obj, string $base_path, array $itens = [
             $fill,
             $textAlign,
             $linethroughCss,
+            $shadowCss,
             nl2br($text)
         );
     }

@@ -99,6 +99,11 @@ class ModeloLayoutService
             is_array($modelo['config_visual'] ?? null) ? $modelo['config_visual'] : []
         );
 
+        $slotsProduto = $this->contarSlotsProduto($configVisual);
+        if ($slotsProduto > 0) {
+            $maxItens = $slotsProduto;
+        }
+
         $thumbnail = trim((string) ($payload['thumbnail'] ?? ''));
         if ($thumbnail !== '' && str_starts_with($thumbnail, 'data:image/')) {
             $this->salvarThumbnailPreview((string) $modelo['codigo'], $thumbnail);
@@ -265,6 +270,23 @@ class ModeloLayoutService
         $width = (int) $dims['width'];
         $height = (int) $dims['height'];
 
+        $absFundo = marketing_path($fundoPath);
+        $imgW = $width;
+        $imgH = $height;
+        if (is_file($absFundo)) {
+            $info = @getimagesize($absFundo);
+            if ($info !== false) {
+                $imgW = (int) $info[0];
+                $imgH = (int) $info[1];
+            }
+        }
+
+        $scale = min($width / max(1, $imgW), $height / max(1, $imgH));
+        $displayW = $imgW * $scale;
+        $displayH = $imgH * $scale;
+        $leftPalco = ($width - $displayW) / 2;
+        $topPalco = ($height - $displayH) / 2;
+
         $fabricState = [
             'version'    => '5.3.0',
             'background' => $corFundo,
@@ -290,17 +312,19 @@ class ModeloLayoutService
                 [
                     'type'        => 'image',
                     'name'        => 'palco',
-                    'left'        => 0,
-                    'top'         => 0,
-                    'width'       => $width,
-                    'height'      => $height,
-                    'scaleX'      => 1,
-                    'scaleY'      => 1,
+                    'left'        => $leftPalco,
+                    'top'         => $topPalco,
+                    'width'       => $imgW,
+                    'height'      => $imgH,
+                    'scaleX'      => $scale,
+                    'scaleY'      => $scale,
                     'angle'       => 0,
                     'opacity'     => 1,
                     'visible'     => true,
                     'selectable'  => true,
                     'evented'     => true,
+                    'originX'     => 'left',
+                    'originY'     => 'top',
                     'src'         => $fundoPath,
                     'crossOrigin' => 'anonymous',
                 ],
@@ -402,6 +426,39 @@ class ModeloLayoutService
         return $this->mesclarConfigVisual($codigo, $salvo, []);
     }
 
+    /** Conta slots de produto definidos no fabric_state (cards, zonas ou textos vinculados). */
+    public function contarSlotsProduto(array $configVisual): int
+    {
+        $objects = $configVisual['fabric_state']['objects'] ?? [];
+        if (!is_array($objects) || $objects === []) {
+            return 0;
+        }
+
+        $indices = [];
+
+        foreach ($objects as $obj) {
+            if (!is_array($obj)) {
+                continue;
+            }
+
+            if (!empty($obj['isProductCard'])) {
+                $indices[] = (int) ($obj['productIndex'] ?? $obj['zoneId'] ?? 0);
+            } elseif (!empty($obj['isProductZone'])) {
+                $indices[] = (int) ($obj['zoneId'] ?? 0);
+            } elseif (!empty($obj['isDynamicText'])) {
+                $indices[] = (int) ($obj['linkedZone'] ?? 0);
+            }
+        }
+
+        $indices = array_values(array_filter(array_unique($indices), static fn (int $n): bool => $n > 0));
+
+        if ($indices === []) {
+            return 0;
+        }
+
+        return max($indices);
+    }
+
     public function resolverArquivoTemplate(string $codigoModelo): string
     {
         $modelo = $this->buscarPorCodigo($codigoModelo);
@@ -434,11 +491,9 @@ class ModeloLayoutService
         }
 
         [$width, $height] = $info;
-        if ($width !== (int) $dims['width'] || $height !== (int) $dims['height']) {
-            throw new InvalidArgumentException(
-                'Dimensao incorreta. Esperado ' . $dims['width'] . 'x' . $dims['height'] . ', recebido ' . $width . 'x' . $height . '.'
-            );
-        }
+        $targetW = (int) $dims['width'];
+        $targetH = (int) $dims['height'];
+        $this->validarProporcaoFundo($width, $height, $targetW, $targetH);
 
         $ext = match ($mime) {
             'image/png'  => 'png',
@@ -453,9 +508,16 @@ class ModeloLayoutService
 
         $codigo = (string) $modelo['codigo'];
         $destino = $dir . '/' . $codigo . '_' . $formato . '.' . $ext;
-        if (!move_uploaded_file($tmpPath, $destino)) {
-            if (!rename($tmpPath, $destino)) {
-                throw new RuntimeException('Falha ao salvar arquivo de fundo.');
+        $tmpSalvo = $dir . '/.tmp_' . uniqid('', true) . '.' . $ext;
+        if (!move_uploaded_file($tmpPath, $tmpSalvo) && !rename($tmpPath, $tmpSalvo)) {
+            throw new RuntimeException('Falha ao salvar arquivo de fundo.');
+        }
+
+        try {
+            $this->normalizarImagemFundo($tmpSalvo, $destino, $mime, $targetW, $targetH);
+        } finally {
+            if (is_file($tmpSalvo)) {
+                @unlink($tmpSalvo);
             }
         }
 
@@ -554,7 +616,8 @@ class ModeloLayoutService
         $status = 'pendente';
 
         $assistant = new MarketingAssistant();
-        if ($assistant->removerFundoImagem($destino, marketing_path($relativoLimpa))) {
+        $rembg = $assistant->removerFundoImagem($destino, marketing_path($relativoLimpa));
+        if ($rembg['ok']) {
             $status = 'ok';
             $url = $relativoLimpa;
         } else {
@@ -595,6 +658,91 @@ class ModeloLayoutService
         }
 
         return $fallback;
+    }
+
+    private function validarProporcaoFundo(int $width, int $height, int $targetW, int $targetH): void
+    {
+        if ($width < 1 || $height < 1) {
+            throw new InvalidArgumentException('Arquivo de imagem invalido.');
+        }
+
+        $expected = $targetW / $targetH;
+        $actual = $width / $height;
+        if (abs($expected - $actual) > 0.02) {
+            throw new InvalidArgumentException(
+                'Proporcao incorreta. Esperado ' . $targetW . 'x' . $targetH
+                . ' (Stories 9:16, quadrado 1:1, etc.), recebido ' . $width . 'x' . $height . '.'
+            );
+        }
+    }
+
+    private function normalizarImagemFundo(
+        string $srcPath,
+        string $destPath,
+        string $mime,
+        int $targetW,
+        int $targetH
+    ): void {
+        $info = @getimagesize($srcPath);
+        if ($info === false) {
+            throw new InvalidArgumentException('Arquivo de imagem invalido.');
+        }
+
+        [$srcW, $srcH] = $info;
+        if ($srcW === $targetW && $srcH === $targetH) {
+            if ($srcPath !== $destPath && !copy($srcPath, $destPath)) {
+                throw new RuntimeException('Falha ao salvar arquivo de fundo.');
+            }
+
+            return;
+        }
+
+        if (!extension_loaded('gd')) {
+            if ($srcPath !== $destPath && !copy($srcPath, $destPath)) {
+                throw new RuntimeException('Falha ao salvar arquivo de fundo.');
+            }
+
+            return;
+        }
+
+        $createFn = match ($mime) {
+            'image/png'  => 'imagecreatefrompng',
+            'image/jpeg' => 'imagecreatefromjpeg',
+            default      => throw new InvalidArgumentException('Use PNG ou JPEG.'),
+        };
+
+        $srcImg = @$createFn($srcPath);
+        if ($srcImg === false) {
+            throw new InvalidArgumentException('Nao foi possivel ler a imagem.');
+        }
+
+        $dstImg = imagecreatetruecolor($targetW, $targetH);
+        if ($dstImg === false) {
+            imagedestroy($srcImg);
+            throw new RuntimeException('Falha ao preparar imagem de fundo.');
+        }
+
+        if ($mime === 'image/png') {
+            imagealphablending($dstImg, false);
+            imagesavealpha($dstImg, true);
+            $transparent = imagecolorallocatealpha($dstImg, 0, 0, 0, 127);
+            imagefill($dstImg, 0, 0, $transparent);
+        }
+
+        imagecopyresampled($dstImg, $srcImg, 0, 0, 0, 0, $targetW, $targetH, $srcW, $srcH);
+
+        $saved = match ($mime) {
+            'image/png'  => imagepng($dstImg, $destPath),
+            'image/jpeg' => imagejpeg($dstImg, $destPath, 92),
+            default      => false,
+        };
+
+        imagedestroy($srcImg);
+        imagedestroy($dstImg);
+
+        if (!$saved) {
+            throw new RuntimeException('Falha ao salvar imagem redimensionada.');
+        }
     }
 
     private function normalizarLinha(array $modelo): array

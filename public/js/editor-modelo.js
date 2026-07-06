@@ -81,7 +81,9 @@
   const propsTexto = document.getElementById('props-texto');
   const propsTextoDinamico = document.getElementById('props-texto-dinamico');
   const propsZona = document.getElementById('props-zona');
+  const propsCard = document.getElementById('props-card');
   const propsImagem = document.getElementById('props-imagem');
+  const propsPalco = document.getElementById('props-palco');
   const propsVetor = document.getElementById('props-vetor');
   const propsComum = document.getElementById('props-comum');
   const propsEmpty = document.getElementById('props-empty');
@@ -95,8 +97,43 @@
   let propsObj = null;
   let syncingProps = false;
   let zoneCounter = 0;
+  let palcoEditMode = false;
+  let palcoFitMode = 'contain';
+  let contextMenuTarget = null;
+  let editorDirty = false;
+  let editorReady = false;
 
-  const CUSTOM_PROPS = ['name', 'isProductZone', 'zoneId', 'isDynamicText', 'textType', 'linkedZone'];
+  const CUSTOM_PROPS = ['name', 'isProductZone', 'zoneId', 'isProductCard', 'productIndex', 'cardPart', 'isDynamicText', 'textType', 'linkedZone', 'isLocked'];
+
+  const PROMO_TEXT_DEFAULTS = {
+    titulo_linha1: {
+      fallback: 'PROMOCAO',
+      leftRatio: 0.08,
+      topRatio: 0.04,
+      fontSize: 72,
+      fill: '#ffffff',
+      fontWeight: '900',
+      fontFamily: 'Bebas Neue, Oswald, Impact, sans-serif',
+    },
+    titulo_linha2: {
+      fallback: 'FECHA MES',
+      leftRatio: 0.08,
+      topRatio: 0.09,
+      fontSize: 96,
+      fill: null,
+      fontWeight: '900',
+      fontFamily: 'Bebas Neue, Oswald, Impact, sans-serif',
+    },
+    badge_oferta: {
+      fallback: 'Oferta',
+      leftRatio: 0.05,
+      topRatio: 0.15,
+      fontSize: 36,
+      fill: '#ffffff',
+      fontWeight: '700',
+      fontFamily: 'Bebas Neue, Oswald, Impact, sans-serif',
+    },
+  };
 
   const DYNAMIC_TEXT_DEFAULTS = {
     nome_produto: { text: '[NOME_PRODUTO]', fontSize: 28, fill: '#ffffff', fontWeight: '700', linethrough: false },
@@ -112,6 +149,20 @@
   function showEditorAlert(msg, type = 'error') {
     if (!alertSlot) return;
     showAlert(alertSlot, msg, type);
+  }
+
+  function markEditorDirty() {
+    if (!editorReady) return;
+    editorDirty = true;
+  }
+
+  function resetEditorDirty() {
+    editorDirty = false;
+  }
+
+  function confirmLeaveEditor() {
+    if (!editorDirty) return true;
+    return window.confirm('Voce tem alteracoes nao salvas. Deseja sair sem salvar?');
   }
 
   function canvasSize() {
@@ -131,7 +182,18 @@
   }
 
   function isProductZone(obj) {
-    return obj?.isProductZone === true;
+    return obj?.isProductZone === true || obj?.isProductCard === true;
+  }
+
+  function isProductCard(obj) {
+    return obj?.isProductCard === true;
+  }
+
+  function getProductCardRoot(obj) {
+    if (!obj) return null;
+    if (isProductCard(obj)) return obj;
+    if (obj.group && isProductCard(obj.group)) return obj.group;
+    return null;
   }
 
   function isDynamicText(obj) {
@@ -147,11 +209,244 @@
   }
 
   function isVectorObject(obj) {
-    return obj && ['path', 'group'].includes(obj.type) && !isProductZone(obj);
+    return obj && ['path', 'group'].includes(obj.type) && !isProductZone(obj) && !isProductCard(obj);
+  }
+
+  function isPalcoObject(obj) {
+    return obj?.name === 'palco' && obj?.type === 'image';
+  }
+
+  function isObjectLocked(obj) {
+    return obj?.isLocked === true;
+  }
+
+  function isContextMenuTarget(obj) {
+    return isEditableObject(obj);
+  }
+
+  function setObjectLocked(obj, locked) {
+    if (!obj || isProtectedObject(obj)) return;
+
+    const opts = {
+      isLocked: locked,
+      lockMovementX: locked,
+      lockMovementY: locked,
+      lockScalingX: locked,
+      lockScalingY: locked,
+      lockRotation: locked,
+      hasControls: !locked,
+      borderColor: locked ? '#64748b' : '#b91c1c',
+      cornerColor: locked ? '#64748b' : '#ffffff',
+    };
+
+    if (isTextObject(obj) || isDynamicText(obj)) {
+      opts.editable = !locked;
+    }
+
+    obj.set(opts);
+    obj.setCoords();
+    canvas?.renderAll();
+    refreshLayersList();
+    if (propsObj === obj) updateLockButtonState(obj);
+  }
+
+  function updateLockButtonState(obj) {
+    const btn = document.getElementById('prop-bloquear');
+    if (!btn || !obj) return;
+    const locked = isObjectLocked(obj);
+    btn.textContent = locked ? 'Desbloquear elemento' : 'Bloquear elemento';
+    btn.classList.toggle('is-active', locked);
+  }
+
+  function setPropsPanelDisabled(disabled) {
+    if (!painelProps) return;
+    painelProps.querySelectorAll('.editor-props-body input, .editor-props-body button').forEach((el) => {
+      if (el.id === 'prop-bloquear' || el.id === 'btn-fechar-props') return;
+      el.disabled = disabled;
+    });
+  }
+
+  function applyLockStatesFromCanvas() {
+    canvas?.getObjects().forEach((obj) => {
+      if (obj.isLocked) setObjectLocked(obj, true);
+    });
+  }
+
+  function generateCopyName(name) {
+    const base = String(name || 'elemento').replace(/(_copy[_a-z0-9]*)+$/i, '');
+    return `${base}_copy_${Date.now().toString(36).slice(-4)}`;
+  }
+
+  function duplicateObject(obj) {
+    if (!obj || isProtectedObject(obj)) {
+      showEditorAlert('Este elemento nao pode ser duplicado.');
+      return;
+    }
+    if (isObjectLocked(obj)) {
+      showEditorAlert('Desbloqueie o elemento antes de duplicar.');
+      return;
+    }
+
+    obj.clone((cloned) => {
+      if (!cloned) return;
+
+      cloned.set({
+        left: (obj.left || 0) + 24,
+        top: (obj.top || 0) + 24,
+        name: generateCopyName(obj.name),
+        isLocked: false,
+        lockMovementX: false,
+        lockMovementY: false,
+        lockScalingX: false,
+        lockScalingY: false,
+        lockRotation: false,
+        hasControls: true,
+        editable: isTextObject(cloned) || isDynamicText(cloned),
+      });
+
+      if (isProductCard(cloned)) {
+        zoneCounter += 1;
+        updateCardProductIndex(cloned, zoneCounter);
+        cloned.set({
+          left: (obj.left || 0) + 48,
+          top: (obj.top || 0) + 48,
+        });
+      } else if (isProductZone(cloned) && !isProductCard(cloned)) {
+        zoneCounter += 1;
+        cloned.set({
+          zoneId: zoneCounter,
+          name: `zona_produto_${zoneCounter}`,
+        });
+      }
+
+      canvas.add(cloned);
+      enforceBackgroundOrder();
+      canvas.setActiveObject(cloned);
+      canvas.renderAll();
+      openPropsPanel(cloned);
+      refreshLayersList();
+      showEditorAlert('Elemento duplicado.', 'success');
+    }, CUSTOM_PROPS);
+  }
+
+  function getPromoTextValue(textKey) {
+    const input = document.querySelector(`[data-texto="${textKey}"]`);
+    if (input && input.value.trim() !== '') return input.value.trim();
+    const configVal = EDITOR_DATA.config?.textos?.[textKey];
+    if (configVal) return String(configVal);
+    return PROMO_TEXT_DEFAULTS[textKey]?.fallback || '';
+  }
+
+  function createPromoTextObject(textKey) {
+    const cfg = PROMO_TEXT_DEFAULTS[textKey];
+    if (!cfg) return null;
+
+    const cores = EDITOR_DATA.config?.cores || {};
+    const fill = cfg.fill || cores.primary || '#dc2626';
+
+    return new fabric.IText(getPromoTextValue(textKey), {
+      name: textKey,
+      left: dims.width * DISPLAY_SCALE * cfg.leftRatio,
+      top: dims.height * DISPLAY_SCALE * cfg.topRatio,
+      fontSize: cfg.fontSize * DISPLAY_SCALE,
+      fill,
+      fontWeight: cfg.fontWeight || '700',
+      fontFamily: cfg.fontFamily || 'Segoe UI, Arial, sans-serif',
+    });
+  }
+
+  function focusPromoText(textKey) {
+    if (!PROMO_TEXT_DEFAULTS[textKey]) return;
+
+    let obj = findObjectByName(textKey);
+    if (!obj) {
+      obj = createPromoTextObject(textKey);
+      if (!obj) return;
+      canvas.add(obj);
+      enforceBackgroundOrder();
+    } else if (isTextObject(obj)) {
+      obj.set('text', getPromoTextValue(textKey));
+    }
+
+    canvas.setActiveObject(obj);
+    canvas.renderAll();
+    openPropsPanel(obj);
+    refreshLayersList();
+    showEditorAlert('Arraste o texto no canvas para posicionar.', 'success');
+  }
+
+  function hideContextMenu() {
+    const menu = document.getElementById('editor-context-menu');
+    if (!menu) return;
+    menu.hidden = true;
+    menu.classList.add('hidden');
+    contextMenuTarget = null;
+  }
+
+  function showContextMenu(clientX, clientY, obj) {
+    const menu = document.getElementById('editor-context-menu');
+    if (!menu || !obj) return;
+
+    contextMenuTarget = obj;
+    canvas.setActiveObject(obj);
+    canvas.renderAll();
+    openPropsPanel(obj);
+
+    const lockItem = menu.querySelector('[data-action="lock"]');
+    if (lockItem) {
+      lockItem.textContent = isObjectLocked(obj) ? 'Desbloquear' : 'Bloquear';
+    }
+
+    menu.style.left = `${clientX}px`;
+    menu.style.top = `${clientY}px`;
+    menu.hidden = false;
+    menu.classList.remove('hidden');
+  }
+
+  function handleContextMenuAction(action) {
+    const obj = contextMenuTarget || getActiveTarget();
+    hideContextMenu();
+    if (!obj || isProtectedObject(obj)) return;
+
+    switch (action) {
+      case 'duplicate':
+        if (resolveProductBlockIndex(obj) || isProductCard(obj) || getProductCardRoot(obj)) {
+          duplicarBlocoProduto();
+        } else {
+          duplicateObject(obj);
+        }
+        break;
+      case 'delete':
+        canvas.setActiveObject(obj);
+        removeActiveObject();
+        break;
+      case 'lock':
+        setObjectLocked(obj, !isObjectLocked(obj));
+        openPropsPanel(obj);
+        break;
+      case 'forward':
+        canvas.setActiveObject(obj);
+        bringForwardActive();
+        break;
+      case 'backward':
+        canvas.setActiveObject(obj);
+        sendBackwardActive();
+        break;
+      case 'front':
+        canvas.setActiveObject(obj);
+        bringToFrontActive();
+        break;
+      default:
+        break;
+    }
   }
 
   function isProtectedObject(obj) {
     return obj && (obj.name === 'fundo-editor' || obj.name === 'palco');
+  }
+
+  function isCardPartObject(obj) {
+    return !!(obj?.cardPart && getProductCardRoot(obj));
   }
 
   function isEditableObject(obj) {
@@ -161,7 +456,9 @@
       isImageObject(obj) ||
       isVectorObject(obj) ||
       isProductZone(obj) ||
-      isDynamicText(obj)
+      isProductCard(obj) ||
+      isDynamicText(obj) ||
+      isCardPartObject(obj)
     );
   }
 
@@ -180,12 +477,25 @@
 
   function reescalarObject(obj, factor) {
     const copy = { ...obj };
-    const numericKeys = ['left', 'top', 'width', 'height', 'fontSize', 'rx', 'ry', 'radius', 'strokeWidth'];
-    numericKeys.forEach((key) => {
-      if (typeof copy[key] === 'number') {
-        copy[key] *= factor;
-      }
-    });
+
+    if (copy.type === 'image') {
+      ['left', 'top', 'scaleX', 'scaleY'].forEach((key) => {
+        if (typeof copy[key] === 'number') {
+          copy[key] *= factor;
+        }
+      });
+    } else {
+      const numericKeys = ['left', 'top', 'width', 'height', 'fontSize', 'rx', 'ry', 'radius', 'strokeWidth'];
+      numericKeys.forEach((key) => {
+        if (typeof copy[key] === 'number') {
+          copy[key] *= factor;
+        }
+      });
+    }
+
+    if (Array.isArray(copy.objects)) {
+      copy.objects = copy.objects.map((child) => reescalarObject(child, factor));
+    }
 
     if (copy.shadow && typeof copy.shadow === 'object') {
       copy.shadow = { ...copy.shadow };
@@ -197,6 +507,271 @@
     }
 
     return copy;
+  }
+
+  function fitFundoRectToCanvas() {
+    const rect = findObjectByName('fundo-editor');
+    if (!rect) return;
+    rect.set({
+      left: 0,
+      top: 0,
+      width: canvas.width,
+      height: canvas.height,
+      scaleX: 1,
+      scaleY: 1,
+    });
+    rect.setCoords();
+    fundoRect = rect;
+  }
+
+  function palcoIntrinsicSize(obj) {
+    const el = obj._originalElement || (typeof obj.getElement === 'function' ? obj.getElement() : null);
+    if (el && el.naturalWidth > 0 && el.naturalHeight > 0) {
+      return { w: el.naturalWidth, h: el.naturalHeight };
+    }
+    const w = Number(obj.width) || 0;
+    const h = Number(obj.height) || 0;
+    if (w > 0 && h > 0) {
+      return { w, h };
+    }
+    return null;
+  }
+
+  function ensurePalcoClipPath(obj) {
+    if (!obj || !canvas) return;
+    obj.clipPath = new fabric.Rect({
+      left: 0,
+      top: 0,
+      width: canvas.width,
+      height: canvas.height,
+      absolutePositioned: true,
+    });
+  }
+
+  function updatePalcoClipPaths() {
+    if (!canvas) return;
+    canvas.getObjects().forEach((obj) => {
+      if (obj.name === 'palco') {
+        ensurePalcoClipPath(obj);
+      }
+    });
+  }
+
+  function applyPalcoFit(obj, size, mode) {
+    if (!obj || !size || !canvas) return;
+
+    const targetW = canvas.width;
+    const targetH = canvas.height;
+    const scaleContain = Math.min(targetW / size.w, targetH / size.h);
+    const scaleCover = Math.max(targetW / size.w, targetH / size.h);
+    const scale = mode === 'cover' ? scaleCover : scaleContain;
+    const displayW = size.w * scale;
+    const displayH = size.h * scale;
+
+    obj.set({
+      left: (targetW - displayW) / 2,
+      top: (targetH - displayH) / 2,
+      originX: 'left',
+      originY: 'top',
+      scaleX: scale,
+      scaleY: scale,
+      angle: 0,
+      lockRotation: true,
+      uniformScaling: true,
+    });
+    obj.setCoords();
+    ensurePalcoClipPath(obj);
+    palcoObject = obj;
+    palcoFitMode = mode;
+    markEditorDirty();
+  }
+
+  /** Garante escala uniforme do palco — evita recorte por width/height inconsistentes. */
+  function fitPalcoToCanvas(mode) {
+    if (!canvas) return;
+    const fitMode = mode || palcoFitMode || 'contain';
+
+    canvas.getObjects().forEach((obj) => {
+      if (obj.name !== 'palco' || obj.type !== 'image') return;
+
+      const size = palcoIntrinsicSize(obj);
+      if (!size) {
+        if (typeof obj.once === 'function') {
+          obj.once('loaded', () => fitPalcoToCanvas(fitMode));
+        }
+        return;
+      }
+
+      applyPalcoFit(obj, size, fitMode);
+    });
+  }
+
+  function isPalcoTransformHealthy(obj) {
+    const sx = obj.scaleX || 1;
+    const sy = obj.scaleY || 1;
+    if (Math.abs(sx - sy) > 0.05) return false;
+
+    const size = palcoIntrinsicSize(obj);
+    if (!size) return false;
+
+    const dw = size.w * sx;
+    const dh = size.h * sy;
+    if (dw < canvas.width * 0.2 || dh < canvas.height * 0.2) return false;
+    if (dw > canvas.width * 10 || dh > canvas.height * 10) return false;
+
+    return true;
+  }
+
+  function extractPalcoTransformFromState(state) {
+    const palco = state?.objects?.find((o) => o.name === 'palco');
+    if (!palco) return null;
+
+    return {
+      left: palco.left,
+      top: palco.top,
+      scaleX: palco.scaleX,
+      scaleY: palco.scaleY,
+    };
+  }
+
+  function getPalcoUniformScale(obj) {
+    return ((obj.scaleX || 1) + (obj.scaleY || 1)) / 2;
+  }
+
+  function setPalcoUniformScale(obj, scale) {
+    const size = palcoIntrinsicSize(obj);
+    if (!size || !canvas) return;
+
+    const displayW = size.w * scale;
+    const displayH = size.h * scale;
+    obj.set({
+      scaleX: scale,
+      scaleY: scale,
+      left: canvas.width / 2 - displayW / 2,
+      top: canvas.height / 2 - displayH / 2,
+    });
+    obj.setCoords();
+    canvas.renderAll();
+    markEditorDirty();
+  }
+
+  function setPalcoEditHint(visible) {
+    const hint = document.getElementById('palco-edit-hint');
+    if (!hint) return;
+    hint.hidden = !visible;
+    hint.classList.toggle('hidden', !visible);
+  }
+
+  function enterPalcoEditMode() {
+    const obj = findObjectByName('palco');
+    if (!obj || !canvas) return;
+
+    palcoEditMode = true;
+    ensurePalcoClipPath(obj);
+    obj.set({
+      selectable: true,
+      evented: true,
+      lockRotation: true,
+      uniformScaling: true,
+      hasControls: true,
+      hasBorders: true,
+    });
+    canvas.setActiveObject(obj);
+    canvas.renderAll();
+    openPropsPanel(obj);
+    setPalcoEditHint(true);
+    showEditorAlert(
+      'Modo ajuste: arraste para mover · cantos para zoom · Esc ou duplo clique para sair',
+      'success'
+    );
+  }
+
+  function exitPalcoEditMode() {
+    if (!palcoEditMode) return;
+    palcoEditMode = false;
+    setPalcoEditHint(false);
+    canvas?.discardActiveObject();
+    canvas?.renderAll();
+  }
+
+  function stripPalcoFromState(state) {
+    const copy = JSON.parse(JSON.stringify(state));
+    if (Array.isArray(copy.objects)) {
+      copy.objects = copy.objects.filter((obj) => obj.name !== 'palco');
+    }
+    return copy;
+  }
+
+  function loadPalcoFromConfig(savedTransformReal, done, defaultFitMode) {
+    const fundos = EDITOR_DATA.config?.fundos || {};
+    const palcoPath = fundos[formato] || fundos['9x16'] || '';
+    if (!palcoPath) {
+      if (typeof done === 'function') done();
+      return;
+    }
+
+    const existing = findObjectByName('palco');
+    if (existing) {
+      canvas.remove(existing);
+      if (palcoObject === existing) palcoObject = null;
+    }
+
+    fabric.Image.fromURL(
+      assetUrl(palcoPath) + '?v=' + Date.now(),
+      (img) => {
+        if (!img) {
+          if (typeof done === 'function') done();
+          return;
+        }
+
+        img.set({
+          name: 'palco',
+          left: 0,
+          top: 0,
+          originX: 'left',
+          originY: 'top',
+          selectable: true,
+          evented: true,
+          lockRotation: true,
+          uniformScaling: true,
+        });
+        canvas.add(img);
+
+        if (savedTransformReal) {
+          const t = reescalarObject({ type: 'image', ...savedTransformReal }, DISPLAY_SCALE);
+          img.set({
+            left: t.left,
+            top: t.top,
+            scaleX: t.scaleX,
+            scaleY: t.scaleY,
+          });
+        }
+
+        const size = palcoIntrinsicSize(img) || { w: img.width || 1, h: img.height || 1 };
+        let forcedRefit = false;
+
+        if (savedTransformReal) {
+          if (!isPalcoTransformHealthy(img)) {
+            applyPalcoFit(img, size, defaultFitMode || 'contain');
+            forcedRefit = true;
+          } else {
+            ensurePalcoClipPath(img);
+            palcoObject = img;
+          }
+        } else {
+          applyPalcoFit(img, size, defaultFitMode || 'contain');
+          forcedRefit = true;
+        }
+
+        enforceBackgroundOrder();
+        canvas.renderAll();
+        refreshLayersList();
+
+        const shouldAutoEdit = !savedTransformReal || forcedRefit;
+        if (typeof done === 'function') done(shouldAutoEdit);
+      },
+      { crossOrigin: 'anonymous' }
+    );
   }
 
   function reescalarState(state, factor) {
@@ -251,10 +826,13 @@
     propsTexto?.classList.add('hidden');
     propsTextoDinamico?.classList.add('hidden');
     propsZona?.classList.add('hidden');
+    propsCard?.classList.add('hidden');
     propsImagem?.classList.add('hidden');
+    propsPalco?.classList.add('hidden');
     propsVetor?.classList.add('hidden');
     propsComum?.classList.add('hidden');
     propsEmpty?.classList.remove('hidden');
+    setPropsPanelDisabled(false);
   }
 
   function populateZoneProps(obj) {
@@ -262,6 +840,38 @@
     const zoneIdEl = document.getElementById('prop-zone-id');
     if (zoneIdEl) zoneIdEl.value = String(obj.zoneId ?? '');
     syncingProps = false;
+  }
+
+  function populateCardProps(obj) {
+    syncingProps = true;
+    const cardIndexEl = document.getElementById('prop-card-index');
+    if (cardIndexEl) cardIndexEl.value = String(obj.productIndex ?? obj.zoneId ?? 1);
+    syncingProps = false;
+  }
+
+  function updateCardProductIndex(card, index) {
+    if (!card) return;
+    card.set({
+      productIndex: index,
+      zoneId: index,
+      name: `card_produto_${index}`,
+    });
+    const children = card.getObjects ? card.getObjects() : [];
+    children.forEach((child) => {
+      if (child.isDynamicText) {
+        child.set({ linkedZone: index });
+      }
+    });
+    card.setCoords();
+  }
+
+  function countProductCardsOnCanvas() {
+    let count = 0;
+    canvas?.getObjects().forEach((obj) => {
+      if (isProductCard(obj)) count += 1;
+      else if (obj.isProductZone && !obj.isProductCard) count += 1;
+    });
+    return count;
   }
 
   function populateDynamicTextProps(obj) {
@@ -272,6 +882,22 @@
   }
 
   function openPropsPanel(obj) {
+    if (isPalcoObject(obj)) {
+      propsObj = obj;
+      painelProps?.classList.remove('hidden');
+      propsEmpty?.classList.add('hidden');
+      propsTexto?.classList.add('hidden');
+      propsTextoDinamico?.classList.add('hidden');
+      propsZona?.classList.add('hidden');
+      propsCard?.classList.add('hidden');
+      propsImagem?.classList.add('hidden');
+      propsVetor?.classList.add('hidden');
+      propsComum?.classList.add('hidden');
+      propsPalco?.classList.remove('hidden');
+      populatePalcoProps(obj);
+      return;
+    }
+
     if (!isEditableObject(obj)) {
       closePropsPanel();
       return;
@@ -284,13 +910,44 @@
     propsTexto?.classList.add('hidden');
     propsTextoDinamico?.classList.add('hidden');
     propsZona?.classList.add('hidden');
+    propsCard?.classList.add('hidden');
     propsImagem?.classList.add('hidden');
+    propsPalco?.classList.add('hidden');
     propsVetor?.classList.add('hidden');
     propsComum?.classList.add('hidden');
 
-    if (isProductZone(obj)) {
+    const cardRoot = getProductCardRoot(obj);
+    if (cardRoot && isProductCard(cardRoot) && obj !== cardRoot) {
+      if (isDynamicText(obj) || isTextObject(obj)) {
+        propsTexto?.classList.remove('hidden');
+        populateTextProps(obj);
+        updateLockButtonState(cardRoot);
+        setPropsPanelDisabled(isObjectLocked(cardRoot));
+        return;
+      }
+      propsCard?.classList.remove('hidden');
+      propsComum?.classList.remove('hidden');
+      populateCardProps(cardRoot);
+      updateLockButtonState(cardRoot);
+      setPropsPanelDisabled(isObjectLocked(cardRoot));
+      return;
+    }
+
+    if (isProductCard(obj)) {
+      propsCard?.classList.remove('hidden');
+      propsComum?.classList.remove('hidden');
+      populateCardProps(obj);
+      updateLockButtonState(obj);
+      setPropsPanelDisabled(isObjectLocked(obj));
+      return;
+    }
+
+    if (isProductZone(obj) && !isProductCard(obj)) {
       propsZona?.classList.remove('hidden');
+      propsComum?.classList.remove('hidden');
       populateZoneProps(obj);
+      updateLockButtonState(obj);
+      setPropsPanelDisabled(isObjectLocked(obj));
       return;
     }
 
@@ -314,6 +971,9 @@
       propsVetor?.classList.remove('hidden');
       populateVectorProps(obj);
     }
+
+    updateLockButtonState(obj);
+    setPropsPanelDisabled(isObjectLocked(obj));
   }
 
   function populateTextProps(obj) {
@@ -361,6 +1021,30 @@
     if (opacityEl) opacityEl.value = String(pct);
     if (opacityVal) opacityVal.textContent = String(pct);
     syncingProps = false;
+  }
+
+  function populatePalcoProps(obj) {
+    syncingProps = true;
+    const size = palcoIntrinsicSize(obj);
+    const containScale = size
+      ? Math.min(canvas.width / size.w, canvas.height / size.h)
+      : getPalcoUniformScale(obj);
+    const currentScale = getPalcoUniformScale(obj);
+    const zoomPct = Math.max(25, Math.min(300, Math.round((currentScale / containScale) * 100)));
+
+    syncPalcoZoomControls(zoomPct);
+    syncingProps = false;
+  }
+
+  function syncPalcoZoomControls(zoomPct) {
+    ['prop-palco-zoom', 'fundo-palco-zoom'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.value = String(zoomPct);
+    });
+    ['prop-palco-zoom-val', 'fundo-palco-zoom-val'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = String(zoomPct);
+    });
   }
 
   function getVectorFill(obj) {
@@ -461,6 +1145,10 @@
       showEditorAlert('Elemento protegido ou nenhum selecionado.');
       return;
     }
+    if (isObjectLocked(obj)) {
+      showEditorAlert('Elemento bloqueado. Desbloqueie antes de excluir.');
+      return;
+    }
     canvas.remove(obj);
     canvas.discardActiveObject();
     canvas.renderAll();
@@ -470,6 +1158,12 @@
 
   function bindKeyboardDelete() {
     document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && palcoEditMode) {
+        e.preventDefault();
+        exitPalcoEditMode();
+        return;
+      }
+
       if (e.key !== 'Delete' && e.key !== 'Backspace') return;
       if (isTypingInForm() || isEditingCanvasText()) return;
 
@@ -478,6 +1172,57 @@
 
       e.preventDefault();
       removeActiveObject();
+    });
+  }
+
+  function bindPalcoProps() {
+    const bindPalcoButtons = (ids, handler) => {
+      ids.forEach((id) => {
+        document.getElementById(id)?.addEventListener('click', handler);
+      });
+    };
+
+    bindPalcoButtons(['prop-palco-edit', 'fundo-palco-edit'], () => {
+      enterPalcoEditMode();
+    });
+
+    bindPalcoButtons(['prop-palco-fit-contain', 'fundo-palco-fit-contain'], () => {
+      const obj = findObjectByName('palco');
+      if (!obj) return;
+      const size = palcoIntrinsicSize(obj);
+      if (!size) return;
+      applyPalcoFit(obj, size, 'contain');
+      canvas.renderAll();
+      populatePalcoProps(obj);
+      showEditorAlert('Imagem inteira visivel no canvas.', 'success');
+    });
+
+    bindPalcoButtons(['prop-palco-fit-cover', 'fundo-palco-fit-cover'], () => {
+      const obj = findObjectByName('palco');
+      if (!obj) return;
+      const size = palcoIntrinsicSize(obj);
+      if (!size) return;
+      applyPalcoFit(obj, size, 'cover');
+      canvas.renderAll();
+      populatePalcoProps(obj);
+      showEditorAlert('Fundo preenche todo o canvas.', 'success');
+    });
+
+    ['prop-palco-zoom', 'fundo-palco-zoom'].forEach((id) => {
+      document.getElementById(id)?.addEventListener('input', (e) => {
+        const obj = findObjectByName('palco');
+        if (!obj || syncingProps) return;
+
+        const size = palcoIntrinsicSize(obj);
+        if (!size) return;
+
+        const pct = parseInt(e.target.value, 10) / 100;
+        const containScale = Math.min(canvas.width / size.w, canvas.height / size.h);
+        syncPalcoZoomControls(parseInt(e.target.value, 10));
+        setPalcoUniformScale(obj, containScale * pct);
+        ensurePalcoClipPath(obj);
+        populatePalcoProps(obj);
+      });
     });
   }
 
@@ -542,20 +1287,17 @@
     });
 
     document.getElementById('prop-duplicar')?.addEventListener('click', () => {
-      const obj = propsObj;
-      if (!obj || !isImageObject(obj)) return;
-      obj.clone((cloned) => {
-        cloned.set({
-          left: (obj.left || 0) + 20,
-          top: (obj.top || 0) + 20,
-          name: (obj.name || 'elemento') + '_copy',
-        });
-        canvas.add(cloned);
-        canvas.setActiveObject(cloned);
-        canvas.renderAll();
-        openPropsPanel(cloned);
-        refreshLayersList();
-      });
+      if (propsObj) duplicateObject(propsObj);
+    });
+
+    document.getElementById('prop-duplicar-comum')?.addEventListener('click', () => {
+      if (propsObj) duplicateObject(propsObj);
+    });
+
+    document.getElementById('prop-bloquear')?.addEventListener('click', () => {
+      if (!propsObj || isProtectedObject(propsObj)) return;
+      setObjectLocked(propsObj, !isObjectLocked(propsObj));
+      openPropsPanel(propsObj);
     });
 
     document.getElementById('prop-layer-forward')?.addEventListener('click', bringForwardActive);
@@ -575,11 +1317,328 @@
   function syncZoneCounterFromCanvas() {
     let max = 0;
     canvas?.getObjects().forEach((obj) => {
-      if (obj.isProductZone && obj.zoneId) {
+      if (obj.isProductCard && obj.productIndex) {
+        max = Math.max(max, obj.productIndex);
+      } else if (obj.isProductZone && obj.zoneId) {
         max = Math.max(max, obj.zoneId);
+      } else if (obj.isDynamicText && obj.linkedZone) {
+        max = Math.max(max, obj.linkedZone);
       }
     });
     zoneCounter = max;
+  }
+
+  function resolveProductBlockIndex(obj) {
+    if (!obj) return null;
+    if (isProductCard(obj)) return obj.productIndex || obj.zoneId || null;
+    if (isDynamicText(obj)) return obj.linkedZone || null;
+    if (isProductZone(obj) && !isProductCard(obj)) return obj.zoneId || null;
+    if (obj.type === 'activeSelection' && obj.getObjects) {
+      const indices = obj.getObjects()
+        .map((item) => resolveProductBlockIndex(item))
+        .filter((n) => n !== null && n !== undefined);
+      if (indices.length > 0) return Math.min(...indices);
+    }
+    const cardRoot = getProductCardRoot(obj);
+    if (cardRoot) return cardRoot.productIndex || cardRoot.zoneId || null;
+    return null;
+  }
+
+  function collectLooseBlockObjects(productIndex) {
+    const index = parseInt(String(productIndex), 10);
+    if (!index || !canvas) return [];
+
+    return canvas.getObjects().filter((obj) => {
+      if (isProductCard(obj)) return false;
+      if (obj.isProductZone && !obj.isProductCard && obj.zoneId === index) return true;
+      if (obj.isDynamicText && obj.linkedZone === index) return true;
+      return false;
+    });
+  }
+
+  function finalizeProductCardGroup(group, productIndex) {
+    if (!group) return;
+
+    group.getObjects().forEach((child) => {
+      if (child.isDynamicText && child.textType) {
+        child.set({
+          cardPart: child.textType,
+          linkedZone: productIndex,
+          isDynamicText: true,
+        });
+      } else if (child.isProductZone && !child.isProductCard && child.type === 'group') {
+        child.set({ cardPart: 'foto', zoneId: productIndex });
+      } else if (child.type === 'rect' && !child.cardPart) {
+        child.set({ cardPart: 'foto' });
+      }
+    });
+
+    group.set({
+      isProductCard: true,
+      isProductZone: true,
+      productIndex,
+      zoneId: productIndex,
+      name: `card_produto_${productIndex}`,
+      subTargetCheck: true,
+      originX: 'left',
+      originY: 'top',
+    });
+
+    updateCardProductIndex(group, productIndex);
+  }
+
+  function inferProductIndexFromObjects(objects) {
+    for (const obj of objects) {
+      const idx = resolveProductBlockIndex(obj);
+      if (idx) return idx;
+    }
+    return null;
+  }
+
+  function agruparSelecaoComoBloco() {
+    const active = canvas?.getActiveObject();
+    if (!active) {
+      showEditorAlert('Selecione os elementos do produto no canvas (Shift+clique em cada um).');
+      return;
+    }
+
+    if (isProductCard(active)) {
+      showEditorAlert('Este bloco ja esta agrupado.');
+      return;
+    }
+
+    if (active.type !== 'activeSelection') {
+      showEditorAlert('Selecione todos os elementos do bloco juntos (Shift+clique ou arraste a selecao).');
+      return;
+    }
+
+    const objects = active.getObjects();
+    if (objects.length < 2) {
+      showEditorAlert('Selecione ao menos 2 elementos (zona de foto + textos).');
+      return;
+    }
+
+    syncZoneCounterFromCanvas();
+    let productIndex = inferProductIndexFromObjects(objects);
+    if (!productIndex) {
+      zoneCounter += 1;
+      productIndex = zoneCounter;
+    } else {
+      zoneCounter = Math.max(zoneCounter, productIndex);
+    }
+
+    const group = active.toGroup();
+    finalizeProductCardGroup(group, productIndex);
+    canvas.setActiveObject(group);
+    canvas.renderAll();
+    openPropsPanel(group);
+    refreshLayersList();
+    showEditorAlert(`Bloco do produto ${productIndex} agrupado. Agora voce pode mover tudo junto.`, 'success');
+  }
+
+  function duplicateLooseProductBlock(sourceIndex) {
+    const sources = collectLooseBlockObjects(sourceIndex);
+    if (sources.length === 0) {
+      showEditorAlert(`Nenhum elemento encontrado para o produto ${sourceIndex}.`);
+      return;
+    }
+
+    syncZoneCounterFromCanvas();
+    zoneCounter += 1;
+    const newIndex = zoneCounter;
+    const offsetX = 56;
+    const offsetY = 56;
+    const clones = [];
+    let pending = sources.length;
+
+    sources.forEach((src) => {
+      src.clone((cloned) => {
+        if (!cloned) {
+          pending -= 1;
+          return;
+        }
+
+        cloned.set({
+          left: (src.left || 0) + offsetX,
+          top: (src.top || 0) + offsetY,
+          isLocked: false,
+        });
+
+        if (cloned.isDynamicText) {
+          cloned.set({
+            linkedZone: newIndex,
+            cardPart: cloned.textType || cloned.cardPart || '',
+          });
+        }
+
+        if (cloned.isProductZone && !cloned.isProductCard) {
+          cloned.set({
+            zoneId: newIndex,
+            name: `zona_produto_${newIndex}`,
+            cardPart: 'foto',
+          });
+        }
+
+        canvas.add(cloned);
+        clones.push(cloned);
+        pending -= 1;
+
+        if (pending === 0) {
+          enforceBackgroundOrder();
+          if (clones.length === 1) {
+            canvas.setActiveObject(clones[0]);
+          } else {
+            const selection = new fabric.ActiveSelection(clones, { canvas });
+            canvas.setActiveObject(selection);
+          }
+          canvas.renderAll();
+          refreshLayersList();
+          showEditorAlert(
+            `Bloco do produto ${newIndex} criado (${clones.length} elementos). Posicione e use "Agrupar selecao" para mover junto.`,
+            'success'
+          );
+        }
+      }, CUSTOM_PROPS);
+    });
+  }
+
+  function duplicarBlocoProduto() {
+    const active = canvas?.getActiveObject();
+    if (!active) {
+      showEditorAlert('Selecione um bloco ou qualquer elemento do produto no canvas.');
+      return;
+    }
+
+    if (isProductCard(active)) {
+      duplicateProductCard(active);
+      return;
+    }
+
+    const cardRoot = getProductCardRoot(active);
+    if (cardRoot) {
+      duplicateProductCard(cardRoot);
+      return;
+    }
+
+    const sourceIndex = resolveProductBlockIndex(active);
+    if (!sourceIndex) {
+      showEditorAlert('Nao foi possivel identificar o produto. Verifique o vinculo (Produto N.) dos textos e da zona de foto.');
+      return;
+    }
+
+    duplicateLooseProductBlock(sourceIndex);
+  }
+
+  function createCardText(textType, left, top, productIndex, cfg) {
+    return new fabric.IText(cfg.text, {
+      left,
+      top,
+      fontSize: cfg.fontSize * DISPLAY_SCALE,
+      fill: cfg.fill,
+      fontWeight: cfg.fontWeight,
+      linethrough: cfg.linethrough,
+      fontFamily: 'Bebas Neue, Oswald, Impact, sans-serif',
+      originX: 'left',
+      originY: 'top',
+      cardPart: textType,
+      isDynamicText: true,
+      textType,
+      linkedZone: productIndex,
+    });
+  }
+
+  function addProductCard() {
+    zoneCounter += 1;
+    const productIndex = zoneCounter;
+    const cardW = dims.width * DISPLAY_SCALE * 0.44;
+    const cardH = dims.height * DISPLAY_SCALE * 0.16;
+    const cx = canvas.width / 2 - cardW / 2;
+    const cy = canvas.height / 2 - cardH / 2;
+    const fotoW = cardW * 0.36;
+    const fotoH = cardH * 0.82;
+    const textX = cardW * 0.4;
+
+    const fotoRect = new fabric.Rect({
+      left: cardW * 0.03,
+      top: cardH * 0.09,
+      width: fotoW,
+      height: fotoH,
+      fill: 'rgba(59, 130, 246, 0.12)',
+      stroke: '#3b82f6',
+      strokeWidth: 2,
+      strokeDashArray: [6, 3],
+      rx: 6,
+      ry: 6,
+      originX: 'left',
+      originY: 'top',
+      cardPart: 'foto',
+    });
+
+    const nome = createCardText('nome_produto', textX, cardH * 0.1, productIndex, DYNAMIC_TEXT_DEFAULTS.nome_produto);
+    const precoDe = createCardText('preco_normal', textX, cardH * 0.42, productIndex, DYNAMIC_TEXT_DEFAULTS.preco_normal);
+    const precoPor = createCardText('preco_promo', textX, cardH * 0.58, productIndex, DYNAMIC_TEXT_DEFAULTS.preco_promo);
+    const unidade = createCardText('unidade', textX, cardH * 0.82, productIndex, DYNAMIC_TEXT_DEFAULTS.unidade);
+
+    const badge = new fabric.Text(`Produto ${productIndex}`, {
+      left: cardW * 0.03,
+      top: cardH * 0.02,
+      fontSize: 11 * DISPLAY_SCALE,
+      fill: '#93c5fd',
+      fontWeight: '700',
+      originX: 'left',
+      originY: 'top',
+      cardPart: 'label',
+      selectable: false,
+      evented: false,
+    });
+
+    const group = new fabric.Group([fotoRect, nome, precoDe, precoPor, unidade, badge], {
+      left: cx,
+      top: cy,
+      originX: 'left',
+      originY: 'top',
+      name: `card_produto_${productIndex}`,
+      isProductCard: true,
+      isProductZone: true,
+      productIndex,
+      zoneId: productIndex,
+      subTargetCheck: true,
+    });
+
+    canvas.add(group);
+    canvas.setActiveObject(group);
+    canvas.renderAll();
+    openPropsPanel(group);
+    refreshLayersList();
+    showEditorAlert(`Card do produto ${productIndex} adicionado.`, 'success');
+  }
+
+  function duplicateProductCard(card) {
+    if (!card || !isProductCard(card)) return;
+    if (isObjectLocked(card)) {
+      showEditorAlert('Desbloqueie o card antes de duplicar.');
+      return;
+    }
+
+    zoneCounter += 1;
+    const newIndex = zoneCounter;
+
+    card.clone((cloned) => {
+      if (!cloned) return;
+      cloned.set({
+        left: (card.left || 0) + 48,
+        top: (card.top || 0) + 48,
+        isLocked: false,
+      });
+      updateCardProductIndex(cloned, newIndex);
+      canvas.add(cloned);
+      enforceBackgroundOrder();
+      canvas.setActiveObject(cloned);
+      canvas.renderAll();
+      openPropsPanel(cloned);
+      refreshLayersList();
+      showEditorAlert(`Card do produto ${newIndex} criado.`, 'success');
+    }, CUSTOM_PROPS);
   }
 
   function addProductZone() {
@@ -613,6 +1672,8 @@
     const group = new fabric.Group([rect, label], {
       left: cx,
       top: cy,
+      originX: 'left',
+      originY: 'top',
       name: `zona_produto_${zoneCounter}`,
       isProductZone: true,
       zoneId: zoneCounter,
@@ -653,7 +1714,11 @@
   }
 
   function bindProdutosTab() {
+    document.getElementById('btn-add-card')?.addEventListener('click', addProductCard);
     document.getElementById('btn-add-zona')?.addEventListener('click', addProductZone);
+    document.getElementById('btn-duplicar-bloco')?.addEventListener('click', duplicarBlocoProduto);
+    document.getElementById('btn-agrupar-bloco')?.addEventListener('click', agruparSelecaoComoBloco);
+    document.getElementById('btn-duplicar-card')?.addEventListener('click', duplicarBlocoProduto);
 
     document.querySelectorAll('.var-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -673,7 +1738,7 @@
   }
 
   function captureCanvasThumb() {
-    return canvas.toDataURL({ format: 'png', multiplier: 0.25 });
+    return canvas.toDataURL({ format: 'jpeg', quality: 0.85, multiplier: 0.15 });
   }
 
   function resizeCanvasWrapper() {
@@ -684,6 +1749,7 @@
     if (canvas) {
       canvas.setWidth(size.width);
       canvas.setHeight(size.height);
+      updatePalcoClipPaths();
     }
     return size;
   }
@@ -714,14 +1780,7 @@
       }
 
       if (obj.name === 'palco') {
-        const imgW = obj.width || 1;
-        const imgH = obj.height || 1;
-        obj.set({
-          left: 0,
-          top: 0,
-          scaleX: (dims.width * DISPLAY_SCALE) / imgW,
-          scaleY: (dims.height * DISPLAY_SCALE) / imgH,
-        });
+        fitPalcoToCanvas(palcoFitMode);
         return;
       }
 
@@ -841,16 +1900,32 @@
       closePropsPanel();
     });
 
-    canvas.on('object:added', refreshLayersList);
-    canvas.on('object:removed', refreshLayersList);
+    canvas.on('object:added', () => {
+      refreshLayersList();
+      markEditorDirty();
+    });
+    canvas.on('object:removed', () => {
+      refreshLayersList();
+      markEditorDirty();
+    });
     canvas.on('object:modified', () => {
       refreshLayersList();
+      markEditorDirty();
       if (propsObj && getActiveTarget() === propsObj) {
+        if (isPalcoObject(propsObj)) populatePalcoProps(propsObj);
         if (isTextObject(propsObj) || isDynamicText(propsObj)) populateTextProps(propsObj);
         if (isDynamicText(propsObj)) populateDynamicTextProps(propsObj);
         if (isProductZone(propsObj)) populateZoneProps(propsObj);
-        if (isImageObject(propsObj)) populateImageProps(propsObj);
+        if (isImageObject(propsObj) && !isPalcoObject(propsObj)) populateImageProps(propsObj);
         if (isVectorObject(propsObj)) populateVectorProps(propsObj);
+      }
+    });
+
+    canvas.on('mouse:dblclick', (opt) => {
+      const target = opt.target;
+      if (isPalcoObject(target)) {
+        if (palcoEditMode) exitPalcoEditMode();
+        else enterPalcoEditMode();
       }
     });
   }
@@ -879,27 +1954,12 @@
 
     const palcoPath = fundos[formato] || fundos['9x16'] || '';
     if (palcoPath) {
-      fabric.Image.fromURL(
-        assetUrl(palcoPath),
-        (img) => {
-          if (!img) return;
-          img.set({
-            name: 'palco',
-            left: 0,
-            top: 0,
-            scaleX: (dims.width * DISPLAY_SCALE) / (img.width || 1),
-            scaleY: (dims.height * DISPLAY_SCALE) / (img.height || 1),
-            selectable: true,
-            evented: true,
-          });
-          palcoObject = img;
-          canvas.add(img);
-          enforceBackgroundOrder();
-          canvas.renderAll();
-          refreshLayersList();
-        },
-        { crossOrigin: 'anonymous' }
-      );
+      loadPalcoFromConfig(null, (autoEdit) => {
+        canvas.renderAll();
+        if (autoEdit) enterPalcoEditMode();
+        resetEditorDirty();
+        editorReady = true;
+      }, 'contain');
     }
 
     canvas.renderAll();
@@ -936,6 +1996,16 @@
         fontSize: 96 * DISPLAY_SCALE,
         fill: cores.primary || '#dc2626',
         fontWeight: '900',
+        fontFamily: 'Bebas Neue, Oswald, Impact, sans-serif',
+      },
+      {
+        name: 'badge_oferta',
+        text: textos.badge_oferta || 'Oferta',
+        left: dims.width * DISPLAY_SCALE * 0.05,
+        top: dims.height * DISPLAY_SCALE * 0.15,
+        fontSize: 36 * DISPLAY_SCALE,
+        fill: '#ffffff',
+        fontWeight: '700',
         fontFamily: 'Bebas Neue, Oswald, Impact, sans-serif',
       },
       {
@@ -976,25 +2046,45 @@
 
     canvas.renderAll();
     refreshLayersList();
+
+    const fundos = EDITOR_DATA.config?.fundos || {};
+    const palcoPath = fundos[formato] || fundos['9x16'] || '';
+    if (!palcoPath) {
+      resetEditorDirty();
+      editorReady = true;
+    }
   }
 
   function loadFabricState() {
     const saved = EDITOR_DATA.config?.fabric_state;
     if (saved?.objects?.length) {
-      const scaledState = reescalarState(saved, DISPLAY_SCALE);
+      const palcoTransform = extractPalcoTransformFromState(saved);
+      const scaledState = reescalarState(stripPalcoFromState(saved), DISPLAY_SCALE);
       canvas.loadFromJSON(scaledState, () => {
         canvas.getObjects().forEach((obj) => {
-          if (obj.name === 'palco') palcoObject = obj;
           if (obj.name === 'fundo-editor') fundoRect = obj;
         });
-        syncZoneCounterFromCanvas();
-        enforceBackgroundOrder();
-        canvas.renderAll();
-        refreshLayersList();
-        updateCanvasThumb(captureCanvasThumb());
+        fitFundoRectToCanvas();
+        loadPalcoFromConfig(palcoTransform, (autoEdit) => {
+          applyLockStatesFromCanvas();
+          syncZoneCounterFromCanvas();
+          enforceBackgroundOrder();
+          canvas.renderAll();
+          refreshLayersList();
+          updateCanvasThumb(captureCanvasThumb());
+          if (autoEdit) enterPalcoEditMode();
+          resetEditorDirty();
+          editorReady = true;
+        });
       });
     } else if (isFabricOnlyModel()) {
       initBaseCanvasObjects();
+      const fundos = EDITOR_DATA.config?.fundos || {};
+      const palcoPath = fundos[formato] || fundos['9x16'] || '';
+      if (!palcoPath) {
+        resetEditorDirty();
+        editorReady = true;
+      }
     } else {
       initDefaultObjects();
     }
@@ -1039,6 +2129,7 @@
       picker.addEventListener('input', () => {
         hexInput.value = picker.value;
         if (chave === 'fundo') syncCorFundo();
+        markEditorDirty();
       });
 
       hexInput.addEventListener('input', () => {
@@ -1047,6 +2138,7 @@
         if (/^#[0-9a-fA-F]{6}$/.test(val)) {
           picker.value = val.toLowerCase();
           if (chave === 'fundo') syncCorFundo();
+          markEditorDirty();
         }
       });
     });
@@ -1061,7 +2153,48 @@
           obj.set('text', input.value);
           canvas.renderAll();
         }
+        markEditorDirty();
       });
+    });
+
+    document.querySelectorAll('[data-posicionar-texto]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        focusPromoText(btn.dataset.posicionarTexto || '');
+      });
+    });
+  }
+
+  function bindContextMenu() {
+    const menu = document.getElementById('editor-context-menu');
+    if (!menu || !canvas) return;
+
+    canvas.wrapperEl?.addEventListener('contextmenu', (e) => e.preventDefault());
+    canvas.upperCanvasEl?.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    canvas.on('mouse:down', (opt) => {
+      if (opt.e.button !== 2) return;
+      opt.e.preventDefault();
+      const target = opt.target;
+      if (!isContextMenuTarget(target)) {
+        hideContextMenu();
+        return;
+      }
+      showContextMenu(opt.e.clientX, opt.e.clientY, target);
+    });
+
+    menu.querySelectorAll('[data-action]').forEach((item) => {
+      item.addEventListener('click', (e) => {
+        e.preventDefault();
+        handleContextMenuAction(item.dataset.action || '');
+      });
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!menu.contains(e.target)) hideContextMenu();
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') hideContextMenu();
     });
   }
 
@@ -1111,6 +2244,9 @@
         label = obj.text || `[${obj.textType || 'var'}]`;
       }
       li.className = 'editor-layer-item' + (active === obj ? ' is-active' : '');
+      if (isObjectLocked(obj)) {
+        label = '🔒 ' + label;
+      }
       li.textContent = label;
       li.addEventListener('click', () => {
         canvas.setActiveObject(obj);
@@ -1157,8 +2293,9 @@
               showEditorAlert('Falha ao carregar imagem no canvas.');
               return;
             }
+            const iw = img._originalElement?.naturalWidth || img.width || 1;
             const maxW = dims.width * DISPLAY_SCALE * 0.35;
-            const scale = maxW / (img.width || 1);
+            const scale = maxW / iw;
             img.set({
               name: 'elemento_' + Date.now(),
               left: dims.width * DISPLAY_SCALE * 0.3,
@@ -1222,32 +2359,15 @@
 
         if (palcoPath) {
           EDITOR_DATA.config.fundos = fundos;
-          if (palcoObject) {
-            canvas.remove(palcoObject);
-            palcoObject = null;
-          }
-          fabric.Image.fromURL(
-            assetUrl(palcoPath + '?v=' + Date.now()),
-            (img) => {
-              if (!img) return;
-              img.set({
-                name: 'palco',
-                left: 0,
-                top: 0,
-                scaleX: (dims.width * DISPLAY_SCALE) / (img.width || 1),
-                scaleY: (dims.height * DISPLAY_SCALE) / (img.height || 1),
-              });
-              palcoObject = img;
-              canvas.add(img);
-              enforceBackgroundOrder();
-              canvas.renderAll();
-              refreshLayersList();
-            },
-            { crossOrigin: 'anonymous' }
-          );
+          exitPalcoEditMode();
+          loadPalcoFromConfig(null, () => {
+            enterPalcoEditMode();
+            canvas.renderAll();
+            markEditorDirty();
+          }, 'contain');
         }
 
-        showEditorAlert('Palco atualizado.', 'success');
+        showEditorAlert('Palco enviado. Ajuste posicao e zoom com duplo clique no fundo.', 'success');
       } catch (err) {
         showEditorAlert(err.message);
       } finally {
@@ -1261,18 +2381,26 @@
     document.getElementById('btn-salvar')?.addEventListener('click', async () => {
       const btn = document.getElementById('btn-salvar');
       btn.disabled = true;
+      let redirecting = false;
 
       try {
+        fitFundoRectToCanvas();
+        updatePalcoClipPaths();
+        canvas.renderAll();
+
         const previewDataUrl = captureCanvasThumb();
-        const fabricState = canvas.toObject(CUSTOM_PROPS.concat(['tipo', 'visible']));
+        const fabricState = canvas.toObject(CUSTOM_PROPS.concat(['tipo', 'visible', 'cardPart']));
         const stateReal = reescalarState(fabricState, 1 / DISPLAY_SCALE);
         stateReal.version = fabric.version || '5.3.0';
+
+        const cardCount = countProductCardsOnCanvas();
+        const maxItens = cardCount > 0 ? cardCount : EDITOR_DATA.modelo.max_itens_default;
 
         const payload = {
           id: EDITOR_DATA.modelo.id,
           nome_exibicao: document.getElementById('input-nome')?.value.trim() || EDITOR_DATA.modelo.nome_exibicao,
           formatos_suportados: EDITOR_DATA.modelo.formatos_suportados,
-          max_itens_default: EDITOR_DATA.modelo.max_itens_default,
+          max_itens_default: maxItens,
           thumbnail: previewDataUrl,
           config_visual: {
             cores: coletarCores(),
@@ -1284,14 +2412,41 @@
         };
 
         await apiCall('modelo', 'salvar', { method: 'POST', body: payload });
-        EDITOR_DATA.config = payload.config_visual;
-        updateCanvasThumb(previewDataUrl);
-        showEditorAlert('Modelo salvo.', 'success');
+        resetEditorDirty();
+        hideLoader();
+        showEditorAlert('Modelo salvo com sucesso.', 'success');
+        redirecting = true;
+        window.location.assign('gerenciar-modelos.php');
+        return;
       } catch (err) {
-        showEditorAlert(err.message);
+        hideLoader();
+        console.error('[editor-modelo] Erro ao salvar:', err);
+        showEditorAlert(err.message || 'Erro ao salvar modelo. Verifique o console.');
       } finally {
-        btn.disabled = false;
+        if (!redirecting) {
+          btn.disabled = false;
+        }
       }
+    });
+  }
+
+  function bindNavigationGuard() {
+    document.getElementById('btn-voltar')?.addEventListener('click', (e) => {
+      if (!confirmLeaveEditor()) {
+        e.preventDefault();
+      }
+    });
+
+    document.querySelector('.editor-breadcrumb a[href="gerenciar-modelos.php"]')?.addEventListener('click', (e) => {
+      if (!confirmLeaveEditor()) {
+        e.preventDefault();
+      }
+    });
+
+    window.addEventListener('beforeunload', (e) => {
+      if (!editorDirty) return;
+      e.preventDefault();
+      e.returnValue = '';
     });
   }
 
@@ -1336,8 +2491,10 @@
     bindTabs();
     bindColorPickers();
     bindTextInputs();
+    bindContextMenu();
     bindLayerControls();
     bindPropsPanel();
+    bindPalcoProps();
     bindKeyboardDelete();
     bindUploadElemento();
     bindUploadFundo();
@@ -1345,7 +2502,10 @@
     bindExportarPng();
     bindFormatoSelect();
     bindProdutosTab();
+    bindNavigationGuard();
     closePropsPanel();
+
+    document.getElementById('input-nome')?.addEventListener('input', markEditorDirty);
 
     const fundos = EDITOR_DATA.config?.fundos || {};
     const palcoPath = fundos[formato] || '';

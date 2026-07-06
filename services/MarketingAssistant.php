@@ -107,16 +107,18 @@ TXT;
 
     /**
      * Remove fundo via Rembg CLI (offline, sem API Gemini).
+     *
+     * @return array{ok: bool, erro: string|null}
      */
-    public function removerFundoImagem(string $caminhoOriginal, string $caminhoDestino): bool
+    public function removerFundoImagem(string $caminhoOriginal, string $caminhoDestino): array
     {
         if (!is_file($caminhoOriginal)) {
-            return false;
+            return ['ok' => false, 'erro' => 'Arquivo original nao encontrado.'];
         }
 
         if ($this->rembgBin === '') {
             LoggerService::warning('Rembg nao configurado (REMBG_BIN vazio)');
-            return false;
+            return ['ok' => false, 'erro' => 'Rembg nao configurado. Defina REMBG_BIN em Configuracoes.'];
         }
 
         $dir = dirname($caminhoDestino);
@@ -139,18 +141,23 @@ TXT;
         exec($cmd, $output, $exitCode);
 
         if ($exitCode !== 0 || !is_file($caminhoDestino)) {
+            $msgSaida = trim(implode("\n", $output));
+            $erro = $msgSaida !== ''
+                ? 'Rembg falhou: ' . $msgSaida
+                : 'Rembg falhou (codigo ' . $exitCode . '). Verifique se o executavel esta instalado.';
+
             LoggerService::warning('Rembg falhou', [
                 'exit_code' => $exitCode,
                 'cmd'       => $this->rembgBin . ' i [input] [output]',
-                'output'    => implode("\n", $output),
+                'output'    => $msgSaida,
             ]);
 
-            return false;
+            return ['ok' => false, 'erro' => $erro];
         }
 
         LoggerService::info('Rembg OK', ['destino' => $caminhoDestino]);
 
-        return true;
+        return ['ok' => true, 'erro' => null];
     }
 
     /**

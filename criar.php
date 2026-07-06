@@ -37,7 +37,16 @@ $modelo_nome = htmlspecialchars(
     ENT_QUOTES,
     'UTF-8'
 );
+$modeloService = new ModeloLayoutService();
+$modelo_config_merged = $modelo_selecionado !== null
+    ? $modeloService->configVisualMerged($modelo_selecionado)
+    : [];
+$slots_modelo = $modeloService->contarSlotsProduto($modelo_config_merged);
 $max_itens_default = (int) ($modelo_selecionado['max_itens_default'] ?? 12);
+if ($slots_modelo > 0) {
+    $max_itens_default = $slots_modelo;
+}
+$max_itens_readonly = true;
 $formatos_permitidos = json_decode((string) ($modelo_selecionado['formatos_suportados'] ?? '[]'), true);
 if (!is_array($formatos_permitidos) || $formatos_permitidos === []) {
     $formatos_permitidos = array_keys($formatos);
@@ -47,14 +56,11 @@ if ($formatos_filtrados === []) {
     $formatos_filtrados = $formatos;
 }
 $formato_default = (string) ($formatos_permitidos[0] ?? array_key_first($formatos_filtrados));
-$max_itens_readonly = in_array($modelo_codigo, ['modelo_02', 'modelo_03'], true);
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title><?= htmlspecialchars($page_title) ?> — Eletropasso</title>
+<?php require marketing_path('views/partials/app_head.php'); ?>
 <link rel="stylesheet" href="assets/brand/tokens.css">
 <link rel="stylesheet" href="public/css/app.css">
 </head>
@@ -115,7 +121,8 @@ $max_itens_readonly = in_array($modelo_codigo, ['modelo_02', 'modelo_03'], true)
       </div>
       <div class="form-field">
         <label for="max-itens">Max. Itens</label>
-        <input type="number" id="max-itens" value="<?= $max_itens_default ?>" min="1" max="<?= $max_itens_readonly ? $max_itens_default : 24 ?>"<?= $max_itens_readonly ? ' readonly' : '' ?>>
+        <input type="number" id="max-itens" value="<?= $max_itens_default ?>" min="1" max="<?= $max_itens_default ?>" readonly aria-readonly="true">
+        <p class="form-field-hint">Definido pelo modelo (<?= $max_itens_default ?> produto<?= $max_itens_default === 1 ? '' : 's' ?>).</p>
       </div>
       <div class="form-field">
         <label for="validade-inicio">Validade Inicio</label>
@@ -136,7 +143,7 @@ $max_itens_readonly = in_array($modelo_codigo, ['modelo_02', 'modelo_03'], true)
     <div class="panel-head panel-head--row">
       <div>
         <h2>Produtos</h2>
-        <p>Busque pelo SKU ou preencha manualmente. Arraste para reordenar.</p>
+        <p>Busque pelo SKU ou preencha manualmente. Arraste para reordenar. Este modelo comporta ate <strong><?= $max_itens_default ?></strong> produto<?= $max_itens_default === 1 ? '' : 's' ?> — produto 1 preenche o card 1, produto 2 o card 2, e assim por diante.</p>
       </div>
       <button type="button" id="btn-add-item" class="btn btn-secondary">+ Adicionar Produto</button>
     </div>
