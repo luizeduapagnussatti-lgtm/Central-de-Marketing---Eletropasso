@@ -133,6 +133,15 @@
       fontWeight: '700',
       fontFamily: 'Bebas Neue, Oswald, Impact, sans-serif',
     },
+    texto_legal: {
+      fallback: 'Ofertas validas enquanto durarem os estoques.',
+      leftRatio: 0.02,
+      topRatio: 0.95,
+      fontSize: 14,
+      fill: '#ffffff',
+      fontWeight: '400',
+      fontFamily: 'Segoe UI, Arial, sans-serif',
+    },
   };
 
   const DYNAMIC_TEXT_DEFAULTS = {
@@ -305,6 +314,7 @@
       });
 
       if (isProductCard(cloned)) {
+        syncZoneCounterFromCanvas();
         zoneCounter += 1;
         updateCardProductIndex(cloned, zoneCounter);
         cloned.set({
@@ -312,6 +322,7 @@
           top: (obj.top || 0) + 48,
         });
       } else if (isProductZone(cloned) && !isProductCard(cloned)) {
+        syncZoneCounterFromCanvas();
         zoneCounter += 1;
         cloned.set({
           zoneId: zoneCounter,
@@ -1152,6 +1163,7 @@
     canvas.remove(obj);
     canvas.discardActiveObject();
     canvas.renderAll();
+    syncZoneCounterFromCanvas();
     closePropsPanel();
     refreshLayersList();
   }
@@ -1548,6 +1560,7 @@
   }
 
   function addProductCard() {
+    syncZoneCounterFromCanvas();
     zoneCounter += 1;
     const productIndex = zoneCounter;
     const cardW = dims.width * DISPLAY_SCALE * 0.44;
@@ -1620,6 +1633,7 @@
       return;
     }
 
+    syncZoneCounterFromCanvas();
     zoneCounter += 1;
     const newIndex = zoneCounter;
 
@@ -1642,6 +1656,7 @@
   }
 
   function addProductZone() {
+    syncZoneCounterFromCanvas();
     zoneCounter += 1;
     const w = dims.width * DISPLAY_SCALE * 0.28;
     const h = dims.height * DISPLAY_SCALE * 0.2;
@@ -2027,6 +2042,16 @@
         fontWeight: '900',
         textAlign: 'right',
       },
+      {
+        name: 'texto_legal',
+        text: textos.texto_legal || 'Ofertas validas enquanto durarem os estoques.',
+        left: dims.width * DISPLAY_SCALE * 0.02,
+        top: dims.height * DISPLAY_SCALE * 0.95,
+        fontSize: 14 * DISPLAY_SCALE,
+        fill: '#ffffff',
+        fontWeight: '400',
+        fontFamily: 'Segoe UI, Arial, sans-serif',
+      },
     ];
 
     textDefaults.forEach((cfg) => {
@@ -2377,6 +2402,26 @@
     });
   }
 
+  function ensureCardPartsBeforeSave() {
+    canvas?.getObjects().forEach((obj) => {
+      if (isProductCard(obj)) {
+        finalizeProductCardGroup(obj, obj.productIndex || obj.zoneId || 1);
+      }
+    });
+  }
+
+  function normalizePalcoSrcBeforeSave() {
+    const palcoObj = findObjectByName('palco');
+    if (!palcoObj) return;
+
+    const cleanSrc = EDITOR_DATA.config?.fundos?.[formato]
+      || EDITOR_DATA.config?.fundos?.['9x16']
+      || '';
+    if (cleanSrc) {
+      palcoObj.set('src', cleanSrc);
+    }
+  }
+
   function bindSalvar() {
     document.getElementById('btn-salvar')?.addEventListener('click', async () => {
       const btn = document.getElementById('btn-salvar');
@@ -2386,6 +2431,8 @@
       try {
         fitFundoRectToCanvas();
         updatePalcoClipPaths();
+        ensureCardPartsBeforeSave();
+        normalizePalcoSrcBeforeSave();
         canvas.renderAll();
 
         const previewDataUrl = captureCanvasThumb();

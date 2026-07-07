@@ -13,7 +13,7 @@ GET /api/marketing/produto.php?sku=25693&token=SEU_TOKEN
 
 Sucesso (200):
 ```json
-{ "status": "success", "data": { "sku": "25693", "nome_erp": "LUMANTI LAMPADA...", "preco_venda_atual": 21.69 } }
+{ "status": "success", "data": { "sku": "25693", "nome_erp": "LUMANTI LAMPADA...", "preco_venda_atual": 21.69, "unidade": "m" } }
 ```
 
 Nao encontrado (404):
@@ -23,7 +23,8 @@ Nao encontrado (404):
 
 ## Query MySQL (tabela produtos do Hub)
 ```sql
-SELECT codigo_interno AS sku, descricao AS nome_erp, preco_venda AS preco_venda_atual
+SELECT codigo_interno AS sku, descricao AS nome_erp, preco_venda AS preco_venda_atual,
+       COALESCE(unidade_venda, unidade, 'und') AS unidade
 FROM produtos
 WHERE UPPER(TRIM(codigo_interno)) = UPPER(TRIM(?)) AND ativo = 1
 LIMIT 1

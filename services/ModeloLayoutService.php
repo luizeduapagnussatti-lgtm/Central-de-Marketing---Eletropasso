@@ -378,6 +378,7 @@ class ModeloLayoutService
             $base['cores']['badge_bg'] = '#059669';
             $base['cores']['badge_texto'] = '#ffffff';
             $base['textos']['badge_oferta'] = 'Oferta Especial!';
+            $base['textos']['texto_legal'] = 'Ofertas validas enquanto durarem os estoques.';
             $base['textos']['mostrar_clube'] = false;
             $base['icones']['auto'] = true;
         }

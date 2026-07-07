@@ -35,6 +35,12 @@ $corFundo = htmlspecialchars((string) ($cores['fundo'] ?? '#ffffff'), ENT_QUOTES
 $palco_style = $fundo_src !== '' && !$tem_fabric_palco
     ? 'background-image: url(' . htmlspecialchars($fundo_src, ENT_QUOTES, 'UTF-8') . '); background-size: cover; background-position: center top;'
     : 'background-color: ' . $corFundo . ';';
+
+$render_opts = [
+    'texto_legal_rodape' => (string) ($encarte_data['texto_legal_rodape'] ?? ''),
+    'modelo_config'      => $modelo_config,
+    'formato'            => $formato,
+];
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -85,7 +91,7 @@ body {
 }
 
 .encarte-palco-img {
-  object-fit: fill;
+  object-fit: contain;
 }
 </style>
 </head>
@@ -94,7 +100,7 @@ body {
   <?php if ($fabric_objects !== []): ?>
   <div class="fabric-overlay">
     <?php foreach ($fabric_objects as $obj):
-        echo ep_render_fabric_object(is_array($obj) ? $obj : [], $base_path, $itens ?? []);
+        echo ep_render_fabric_object(is_array($obj) ? $obj : [], $base_path, $itens ?? [], $render_opts);
     endforeach; ?>
   </div>
   <?php endif; ?>

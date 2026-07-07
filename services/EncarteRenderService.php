@@ -44,6 +44,7 @@ class EncarteRenderService
                 throw new RuntimeException('Arquivo PNG nao foi gerado pelo Puppeteer.');
             }
 
+            LoggerService::info('Encarte HTML temporario gerado', ['html' => $htmlPath]);
             @unlink($htmlPath);
 
             $tempoMs = (int) round((microtime(true) - $inicio) * 1000);
