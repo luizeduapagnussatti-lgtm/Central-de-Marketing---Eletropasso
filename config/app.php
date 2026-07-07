@@ -186,7 +186,7 @@ function marketing_encarte_img_src(string $base_path, string $caminho): string
         return '';
     }
 
-    return 'file:///' . str_replace('\\', '/', realpath($full));
+    return 'file:///' . implode('/', array_map('rawurlencode', explode('/', str_replace('\\', '/', realpath($full)))));
 }
 
 /** Caminho relativo do palco estatico por formato (config_visual.fundos). */
@@ -453,6 +453,24 @@ function ep_render_product_card(array $group, string $base_path, array $itens): 
     $item = ($idx >= 0 && isset($itens[$idx])) ? $itens[$idx] : null;
     $html = '';
 
+    $hasFotoPart = false;
+    foreach ($group['objects'] ?? [] as $candidate) {
+        if (!is_array($candidate)) {
+            continue;
+        }
+        $candidatePart = (string) ($candidate['cardPart'] ?? '');
+        if ($candidatePart === 'foto') {
+            $hasFotoPart = true;
+            break;
+        }
+        if ($candidatePart === '' && !empty($candidate['isProductZone']) && empty($candidate['isProductCard'])) {
+            $hasFotoPart = true;
+            break;
+        }
+    }
+
+    $fotoFallbackUsed = false;
+
     foreach ($group['objects'] ?? [] as $child) {
         if (!is_array($child)) {
             continue;
@@ -465,6 +483,11 @@ function ep_render_product_card(array $group, string $base_path, array $itens): 
 
         if ($part === '' && !empty($child['isProductZone']) && empty($child['isProductCard'])) {
             $part = 'foto';
+        }
+
+        if ($part === '' && !$hasFotoPart && !$fotoFallbackUsed && ($child['type'] ?? '') === 'rect') {
+            $part = 'foto';
+            $fotoFallbackUsed = true;
         }
 
         if ($part === '' && !empty($child['isDynamicText'])) {
@@ -489,6 +512,7 @@ function ep_render_product_card(array $group, string $base_path, array $itens): 
 
             $foto = marketing_encarte_foto_src($base_path, $item);
             if ($foto === '') {
+                error_log("encarte render: produto {$productIndex} sem foto ou caminho invalido");
                 continue;
             }
 
@@ -550,7 +574,7 @@ function ep_render_product_card(array $group, string $base_path, array $itens): 
     return $html;
 }
 
-function ep_render_fabric_object(array $obj, string $base_path, array $itens = []): string
+function ep_render_fabric_object(array $obj, string $base_path, array $itens = [], array $render_opts = []): string
 {
     $type = (string) ($obj['type'] ?? '');
     $name = (string) ($obj['name'] ?? '');
@@ -622,6 +646,8 @@ function ep_render_fabric_object(array $obj, string $base_path, array $itens = [
             return '';
         }
 
+        $srcRaw = strtok($srcRaw, '?') ?: $srcRaw;
+
         $srcRel = $srcRaw;
         if (str_contains($srcRaw, 'assets/')) {
             $srcRel = substr($srcRaw, (int) strpos($srcRaw, 'assets/'));
@@ -630,6 +656,16 @@ function ep_render_fabric_object(array $obj, string $base_path, array $itens = [
         }
         $srcRel = ltrim(str_replace('\\', '/', $srcRel), '/');
         $src = marketing_encarte_img_src($base_path, $srcRel);
+
+        if ($src === '' && $name === 'palco') {
+            $modeloConfig = is_array($render_opts['modelo_config'] ?? null) ? $render_opts['modelo_config'] : [];
+            $formato = (string) ($render_opts['formato'] ?? '9x16');
+            $fallbackRel = marketing_encarte_fundo_caminho($modeloConfig, $formato);
+            if ($fallbackRel !== '') {
+                $src = marketing_encarte_img_src($base_path, $fallbackRel);
+            }
+        }
+
         if ($src === '') {
             return '';
         }
@@ -675,6 +711,9 @@ function ep_render_fabric_object(array $obj, string $base_path, array $itens = [
             $text = ep_get_dynamic_text_value($textType, $linkedZone, $itens);
         } else {
             $text = htmlspecialchars((string) ($obj['text'] ?? ''), ENT_QUOTES, 'UTF-8');
+            if ($name === 'texto_legal' && !empty($render_opts['texto_legal_rodape'])) {
+                $text = htmlspecialchars((string) $render_opts['texto_legal_rodape'], ENT_QUOTES, 'UTF-8');
+            }
         }
 
         $fill = htmlspecialchars((string) ($obj['fill'] ?? '#ffffff'), ENT_QUOTES, 'UTF-8');

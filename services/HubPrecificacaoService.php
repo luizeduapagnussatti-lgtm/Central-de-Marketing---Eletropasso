@@ -73,7 +73,21 @@ class HubPrecificacaoService
                 'sku'               => (string) ($json['data']['sku'] ?? $sku),
                 'nome_erp'          => (string) ($json['data']['nome_erp'] ?? ''),
                 'preco_venda_atual' => (float) ($json['data']['preco_venda_atual'] ?? 0),
+                'unidade'           => $this->normalizarUnidade(
+                    (string) ($json['data']['unidade'] ?? $json['data']['unidade_venda'] ?? 'und')
+                ),
             ],
         ];
+    }
+
+    private function normalizarUnidade(string $unidade): string
+    {
+        $u = strtolower(trim($unidade));
+
+        return match ($u) {
+            'm', 'mt', 'metro', 'metros', 'met', 'metr' => 'm',
+            'rl', 'rolo', 'rolos' => 'rl',
+            default => $u !== '' ? $u : 'und',
+        };
     }
 }

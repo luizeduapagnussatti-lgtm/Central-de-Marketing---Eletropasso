@@ -215,6 +215,7 @@ async function buscarSku(index) {
     itens[index].nome_erp = data.nome_erp;
     itens[index].nome_comercial = data.nome_comercial;
     itens[index].preco_normal = floatToBr(data.preco_venda_atual);
+    itens[index].unidade = normalizeUnidade(data.unidade || 'und');
     renderItens();
     flashHubStatus(index, 'Produto encontrado no Hub.', 'success');
   } catch (e) {
@@ -222,6 +223,13 @@ async function buscarSku(index) {
     flashHubStatus(index, e.message, 'error');
     alert('Hub: ' + e.message);
   }
+}
+
+function normalizeUnidade(unidade) {
+  const u = String(unidade || 'und').trim().toLowerCase();
+  if (['m', 'mt', 'metro', 'metros', 'met', 'metr'].includes(u)) return 'm';
+  if (['rl', 'rolo', 'rolos'].includes(u)) return 'rl';
+  return u || 'und';
 }
 
 function setHubBuscaLoading(index, loading, message = '') {
@@ -392,11 +400,11 @@ async function salvarEncarte(gerar = false) {
     if (gerar) {
       const result = await apiCall('encarte', 'gerar', { method: 'POST', body: { id: encarteId } });
       hideLoader();
-      if (result.caminho) {
-        window.location.href = 'index.php';
-      } else {
-        showAlert(document.querySelector('.app-main'), 'Encarte gerado.', 'success');
+      if (!result.caminho) {
+        showAlert(document.querySelector('.app-main'), 'Erro ao gerar encarte: arquivo PNG nao foi criado.', 'error');
+        return;
       }
+      showEncartePreview(result.caminho);
     } else {
       hideLoader();
       showAlert(document.querySelector('.app-main'), 'Encarte salvo como rascunho.', 'success');
@@ -405,6 +413,22 @@ async function salvarEncarte(gerar = false) {
     hideLoader();
     showAlert(document.querySelector('.app-main'), e.message);
   }
+}
+
+function showEncartePreview(caminho) {
+  const box = document.getElementById('encarte-preview-result');
+  const img = document.getElementById('encarte-preview-img');
+  if (!box || !img) {
+    window.location.href = 'index.php';
+    return;
+  }
+
+  const url = new URL(String(caminho).replace(/\\/g, '/'), window.location.href).href;
+  img.src = `${url}?v=${Date.now()}`;
+  box.hidden = false;
+  box.classList.remove('hidden');
+  box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  showAlert(document.querySelector('.app-main'), 'Encarte gerado com sucesso.', 'success');
 }
 
 function esc(str) {

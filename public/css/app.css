@@ -433,6 +433,38 @@ a:hover { color: var(--ep-dark); }
   box-shadow: var(--shadow-sm);
 }
 
+.encarte-preview-result {
+  padding: var(--space-lg);
+  border-top: 1px solid var(--ep-border);
+  background: #fafafa;
+}
+
+.encarte-preview-result.hidden {
+  display: none;
+}
+
+.encarte-preview-title {
+  font-size: 1rem;
+  font-weight: 800;
+  margin-bottom: var(--space-md);
+  color: var(--ep-dark);
+}
+
+.encarte-preview-frame {
+  max-width: 320px;
+  margin-bottom: var(--space-md);
+  border: 1px solid var(--ep-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: #fff;
+}
+
+.encarte-preview-frame img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
 .panel-head {
   background: var(--ep-gradient-panel);
   color: #fff;

@@ -58,6 +58,7 @@ $textosEditor = [
     'footer_endereco' => ['label' => 'Endereco', 'id' => 'texto-footer-endereco'],
     'footer_cidade'   => ['label' => 'Cidade', 'id' => 'texto-footer-cidade'],
     'footer_whatsapp' => ['label' => 'WhatsApp', 'id' => 'texto-footer-whatsapp'],
+    'texto_legal'     => ['label' => 'Texto Legal (Rodape)', 'id' => 'texto-texto-legal'],
 ];
 ?>
 <!DOCTYPE html>
@@ -203,11 +204,11 @@ tailwind.config = {
           <h4 class="editor-section-title">Textos promocionais</h4>
           <p class="editor-section-desc">Edite o conteudo e use <strong>Posicionar no canvas</strong> para arrastar titulos e badge no encarte.</p>
           <?php foreach ($textosEditor as $chave => $meta):
-              if (!array_key_exists($chave, $config['textos'] ?? []) && !in_array($chave, ['titulo_linha1', 'titulo_linha2', 'badge_oferta'], true)) {
+              if (!array_key_exists($chave, $config['textos'] ?? []) && !in_array($chave, ['titulo_linha1', 'titulo_linha2', 'badge_oferta', 'texto_legal'], true)) {
                   continue;
               }
               $valor = htmlspecialchars((string) ($config['textos'][$chave] ?? ''), ENT_QUOTES, 'UTF-8');
-              $posicionavel = in_array($chave, ['titulo_linha1', 'titulo_linha2', 'badge_oferta'], true);
+              $posicionavel = in_array($chave, ['titulo_linha1', 'titulo_linha2', 'badge_oferta', 'texto_legal'], true);
           ?>
           <div class="editor-text-field">
             <label for="<?= $meta['id'] ?>" class="editor-field-label"><?= $meta['label'] ?></label>

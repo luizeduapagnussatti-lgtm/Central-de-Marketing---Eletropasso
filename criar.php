@@ -152,6 +152,15 @@ $formato_default = (string) ($formatos_permitidos[0] ?? array_key_first($formato
       <button type="button" id="btn-salvar" class="btn btn-secondary">Salvar Rascunho</button>
       <button type="button" id="btn-gerar" class="btn btn-primary">Gerar Encarte PNG</button>
     </div>
+    <div id="encarte-preview-result" class="encarte-preview-result hidden" hidden>
+      <h3 class="encarte-preview-title">Encarte gerado</h3>
+      <div class="encarte-preview-frame">
+        <img id="encarte-preview-img" alt="Preview do encarte gerado">
+      </div>
+      <div class="form-actions">
+        <a href="index.php" class="btn btn-primary">Ver galeria</a>
+      </div>
+    </div>
   </section>
 </main>
 

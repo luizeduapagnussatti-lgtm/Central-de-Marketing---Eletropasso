@@ -233,6 +233,7 @@ class EncarteController
             'nome_erp'          => $resultado['data']['nome_erp'],
             'nome_comercial'    => $nomeComercial,
             'preco_venda_atual' => $resultado['data']['preco_venda_atual'],
+            'unidade'           => $resultado['data']['unidade'] ?? 'und',
         ]);
     }
 
