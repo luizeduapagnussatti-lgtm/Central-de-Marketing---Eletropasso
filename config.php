@@ -216,6 +216,28 @@ $nav_active = 'config';
 
               <p class="form-field-hint">Requer Python com <code>pip install rembg[cli] onnxruntime</code>. Usado apenas no servidor.</p>
 
+              <label for="cfg-rembg-model">Modelo Rembg (produtos)</label>
+              <select name="rembg_model" id="cfg-rembg-model">
+                <option value="birefnet-general">birefnet-general (recomendado)</option>
+                <option value="bria-rmbg">bria-rmbg</option>
+                <option value="isnet-general-use">isnet-general-use</option>
+                <option value="u2net">u2net (legado)</option>
+              </select>
+              <p class="form-field-hint">Modelo mais preciso para fotos de produto com fundo branco.</p>
+
+              <label class="config-checkbox">
+                <input type="checkbox" name="rembg_alpha_matting" id="cfg-rembg-alpha" value="1">
+                Alpha matting (bordas mais suaves)
+              </label>
+              <label class="config-checkbox">
+                <input type="checkbox" name="rembg_post_process_mask" id="cfg-rembg-ppm" value="1">
+                Pos-processar mascara Rembg
+              </label>
+              <label class="config-checkbox">
+                <input type="checkbox" name="rembg_white_refine" id="cfg-rembg-white-refine" value="1" checked>
+                Refinar fundo branco residual (miolo de rolos, etc.)
+              </label>
+
             </div>
 
           </details>

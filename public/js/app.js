@@ -25,7 +25,19 @@ async function apiCall(recurso, acao, options = {}) {
   }
 
   const resp = await fetch(url, fetchOpts);
-  const json = await resp.json();
+  const raw = await resp.text();
+
+  let json;
+  try {
+    json = raw ? JSON.parse(raw) : {};
+  } catch {
+    const snippet = raw.replace(/\s+/g, ' ').trim().slice(0, 180);
+    throw new Error(
+      snippet
+        ? `Resposta invalida do servidor (${resp.status}): ${snippet}`
+        : `Resposta invalida do servidor (${resp.status}).`
+    );
+  }
 
   if (!json.success) {
     throw new Error(json.error || 'Erro desconhecido.');

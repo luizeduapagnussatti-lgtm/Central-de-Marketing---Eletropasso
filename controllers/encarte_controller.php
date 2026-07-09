@@ -85,11 +85,14 @@ class EncarteController
             marketing_json_response(false, null, 'ID invalido.', 422);
         }
 
+        @set_time_limit(120);
+
         try {
             EncarteRenderService::limparTemp();
             $resultado = $this->renderService->gerar($id);
             marketing_json_response(true, $resultado);
         } catch (Throwable $e) {
+            LoggerService::error('Erro ao gerar encarte PNG', ['id' => $id, 'erro' => $e->getMessage()]);
             marketing_json_response(false, null, $e->getMessage(), 500);
         }
     }

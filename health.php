@@ -78,11 +78,26 @@ if (!$checks['node']['ok']) {
     $healthy = false;
 }
 
+$puppeteerDir = marketing_path('node_modules/puppeteer');
+$renderScript = marketing_path('bin/render_encarte.js');
+$execDisabled = !function_exists('exec')
+    || in_array('exec', array_filter(array_map('trim', explode(',', (string) ini_get('disable_functions')))), true);
+$checks['puppeteer'] = [
+    'ok' => is_dir($puppeteerDir) && is_file($renderScript) && !$execDisabled,
+    'node_modules' => is_dir($puppeteerDir),
+    'render_script' => is_file($renderScript),
+    'exec_enabled' => !$execDisabled,
+];
+if (!$checks['puppeteer']['ok']) {
+    $healthy = false;
+}
+
 $writableDirs = [
     'temp',
     'encartes/gerados',
     'assets/produtos/originais',
     'assets/produtos/limpas',
+    'assets/modelos/fundos',
     'storage/logs',
 ];
 $dirResults = [];
@@ -101,6 +116,48 @@ $checks['writable_dirs'] = [
     'ok' => !in_array(false, $dirResults, true),
     'paths' => $dirResults,
 ];
+
+$fundosMissing = [];
+$fundosRegistered = 0;
+if (($checks['database']['ok'] ?? false) === true) {
+    try {
+        $pdo = marketing_pdo();
+        $stFundos = $pdo->query(
+            "SELECT codigo, config_visual FROM modelos_layout WHERE config_visual IS NOT NULL AND config_visual != ''"
+        );
+        while ($row = $stFundos->fetch(PDO::FETCH_ASSOC)) {
+            $cfg = json_decode((string) ($row['config_visual'] ?? ''), true);
+            if (!is_array($cfg) || !is_array($cfg['fundos'] ?? null)) {
+                continue;
+            }
+            foreach ($cfg['fundos'] as $fmt => $relPath) {
+                if (!is_string($relPath) || $relPath === '' || $fmt === 'status') {
+                    continue;
+                }
+                $fundosRegistered++;
+                $abs = marketing_path($relPath);
+                if (!is_file($abs)) {
+                    $fundosMissing[] = [
+                        'modelo' => (string) ($row['codigo'] ?? ''),
+                        'formato' => (string) $fmt,
+                        'path' => $relPath,
+                    ];
+                }
+            }
+        }
+    } catch (Throwable $e) {
+        $fundosMissing[] = ['error' => $e->getMessage()];
+    }
+}
+$checks['fundos_assets'] = [
+    'ok' => $fundosMissing === [],
+    'registered' => $fundosRegistered,
+    'missing' => $fundosMissing,
+    'missing_count' => count($fundosMissing),
+];
+if ($fundosMissing !== [] && !isset($fundosMissing[0]['error'])) {
+    $healthy = false;
+}
 
 $checks['manifest'] = [
     'ok' => is_array($manifest) && is_array($manifest['migrations'] ?? null),

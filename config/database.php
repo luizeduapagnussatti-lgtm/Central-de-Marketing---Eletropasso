@@ -52,6 +52,13 @@ function marketing_config(string $chave, ?string $default = null): ?string
     return $cache[$chave] ?? $default;
 }
 
+function marketing_config_bool(string $chave, ?string $default = '0'): bool
+{
+    $valor = strtolower(trim((string) (marketing_config($chave, $default) ?? $default)));
+
+    return in_array($valor, ['1', 'true', 'yes', 'on', 'sim'], true);
+}
+
 function marketing_config_set(string $chave, string $valor): void
 {
     $st = marketing_pdo()->prepare(

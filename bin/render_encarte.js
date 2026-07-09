@@ -65,17 +65,29 @@ async function main() {
     });
 
     await page.evaluate(async () => {
+      if (document.fonts && document.fonts.ready) {
+        await document.fonts.ready;
+      }
+
       const images = Array.from(document.querySelectorAll('img'));
       await Promise.all(
         images.map((img) => {
-          if (img.complete) return Promise.resolve();
+          if (img.complete && img.naturalWidth > 0) return Promise.resolve();
           return new Promise((resolve) => {
             img.onload = resolve;
             img.onerror = resolve;
+            if (!img.complete) {
+              setTimeout(resolve, 3000);
+            } else {
+              resolve();
+            }
           });
         })
       );
     });
+
+    // Breve pausa para background-image e layout estabilizarem
+    await new Promise((r) => setTimeout(r, 250));
 
     await page.screenshot({
       type: 'png',

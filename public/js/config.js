@@ -12,6 +12,10 @@ const CFG_IDS = {
   gemini_api_key: 'cfg-gemini-key',
   gemini_model: 'cfg-gemini-model',
   rembg_bin: 'cfg-rembg-bin',
+  rembg_model: 'cfg-rembg-model',
+  rembg_alpha_matting: 'cfg-rembg-alpha',
+  rembg_post_process_mask: 'cfg-rembg-ppm',
+  rembg_white_refine: 'cfg-rembg-white-refine',
   hub_api_url: 'cfg-hub-url',
   hub_api_token: 'cfg-hub-token',
   max_upload_size_mb: 'cfg-max-upload',
@@ -54,7 +58,17 @@ async function loadConfig() {
   Object.entries(CFG_IDS).forEach(([key, id]) => {
     const el = document.getElementById(id);
     if (!el || !cfg[key]) return;
+    if (el.type === 'checkbox') {
+      el.checked = ['1', 'true', 'yes', 'on', 'sim'].includes(String(cfg[key].valor ?? '').toLowerCase());
+      return;
+    }
     el.value = cfg[key].valor ?? '';
+  });
+
+  ['rembg_alpha_matting', 'rembg_post_process_mask', 'rembg_white_refine'].forEach((key) => {
+    const el = document.getElementById(CFG_IDS[key]);
+    if (!el || cfg[key]) return;
+    el.checked = key === 'rembg_white_refine';
   });
 
   const modelEl = document.getElementById('cfg-gemini-model');
@@ -94,6 +108,10 @@ document.getElementById('form-config')?.addEventListener('submit', async (e) => 
   e.preventDefault();
   const fd = new FormData(e.target);
   const payload = Object.fromEntries(fd.entries());
+
+  ['rembg_alpha_matting', 'rembg_post_process_mask', 'rembg_white_refine'].forEach((key) => {
+    payload[key] = payload[key] ? '1' : '0';
+  });
 
   try {
     await apiCall('config', 'salvar', { method: 'POST', body: payload });
