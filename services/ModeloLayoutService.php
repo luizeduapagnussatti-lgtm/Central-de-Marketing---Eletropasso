@@ -427,7 +427,7 @@ class ModeloLayoutService
         return $this->mesclarConfigVisual($codigo, $salvo, []);
     }
 
-    /** Conta slots de produto definidos no fabric_state (cards, zonas ou textos vinculados). */
+    /** Conta slots de produto definidos no fabric_state (cards e zonas avulsas, ordem visual). */
     public function contarSlotsProduto(array $configVisual): int
     {
         $objects = $configVisual['fabric_state']['objects'] ?? [];
@@ -435,29 +435,9 @@ class ModeloLayoutService
             return 0;
         }
 
-        $indices = [];
+        $map = ep_build_encarte_product_zone_map($objects);
 
-        foreach ($objects as $obj) {
-            if (!is_array($obj)) {
-                continue;
-            }
-
-            if (!empty($obj['isProductCard'])) {
-                $indices[] = (int) ($obj['productIndex'] ?? $obj['zoneId'] ?? 0);
-            } elseif (!empty($obj['isProductZone'])) {
-                $indices[] = (int) ($obj['zoneId'] ?? 0);
-            } elseif (!empty($obj['isDynamicText'])) {
-                $indices[] = (int) ($obj['linkedZone'] ?? 0);
-            }
-        }
-
-        $indices = array_values(array_filter(array_unique($indices), static fn (int $n): bool => $n > 0));
-
-        if ($indices === []) {
-            return 0;
-        }
-
-        return max($indices);
+        return count($map);
     }
 
     public function resolverArquivoTemplate(string $codigoModelo): string
@@ -544,6 +524,10 @@ class ModeloLayoutService
             if (!isset($merged[$secao]) || !is_array($merged[$secao])) {
                 $merged[$secao] = $base[$secao] ?? [];
             }
+        }
+
+        if ($merged['fundos'] === [] && !empty($atual['fundos']) && is_array($atual['fundos'])) {
+            $merged['fundos'] = $atual['fundos'];
         }
 
         if (!is_array($merged['icones']['mapa'] ?? null)) {

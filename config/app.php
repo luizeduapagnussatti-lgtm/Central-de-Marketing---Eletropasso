@@ -324,21 +324,102 @@ function marketing_modelo_formatos_label(array $modelo): string
 }
 
 /**
+ * Detecta placeholders legados salvos como texto estatico no Fabric.
+ */
+function ep_match_static_placeholder_text(string $text): ?string
+{
+    $normalized = strtoupper(trim($text));
+
+    return match ($normalized) {
+        '[NOME_PRODUTO]', '[NOME]' => 'nome_produto',
+        '[PRECO_NORMAL]', '[PRECO_DE]' => 'preco_normal',
+        '[PRECO_PROMO]', '[PRECO_POR]' => 'preco_promo',
+        '[UNIDADE]' => 'unidade',
+        default => null,
+    };
+}
+
+/**
  * Converte objeto Fabric.js (fabric_state) em HTML/CSS absoluto para Puppeteer.
  */
-function ep_get_dynamic_text_value(string $textType, int $linkedZone, array $itens): string
+
+/**
+ * Coleta slots de produto no canvas (cards e zonas avulsas) para mapear item 1..N pela ordem visual.
+ *
+ * @return array<int, int> mapa zoneId/productIndex -> indice 0-based em $itens
+ */
+function ep_build_encarte_product_zone_map(array $fabric_objects): array
 {
-    $idx = $linkedZone - 1;
-    $item = $itens[$idx] ?? null;
+    $slots = [];
+
+    foreach ($fabric_objects as $obj) {
+        if (!is_array($obj)) {
+            continue;
+        }
+
+        if (!empty($obj['isProductCard']) && ($obj['type'] ?? '') === 'group') {
+            $key = (int) ($obj['productIndex'] ?? $obj['zoneId'] ?? 0);
+            if ($key > 0) {
+                $bbox = ep_fabric_bbox($obj);
+                $slots[$key] = ['top' => $bbox['top'], 'left' => $bbox['left']];
+            }
+            continue;
+        }
+
+        if (!empty($obj['isProductZone']) && empty($obj['isProductCard'])) {
+            $key = (int) ($obj['zoneId'] ?? 0);
+            if ($key > 0 && !isset($slots[$key])) {
+                $bbox = ep_fabric_bbox($obj);
+                $slots[$key] = ['top' => $bbox['top'], 'left' => $bbox['left']];
+            }
+        }
+    }
+
+    if ($slots === []) {
+        return [];
+    }
+
+    uasort(
+        $slots,
+        static fn (array $a, array $b): int => $a['top'] <=> $b['top'] ?: $a['left'] <=> $b['left']
+    );
+
+    $map = [];
+    $itemIndex = 0;
+    foreach (array_keys($slots) as $zoneKey) {
+        $map[(int) $zoneKey] = $itemIndex++;
+    }
+
+    return $map;
+}
+
+function ep_resolve_encarte_item_index(int $zoneOrProductIndex, array $render_opts = []): int
+{
+    $map = $render_opts['product_zone_map'] ?? [];
+    if (is_array($map) && $map !== [] && isset($map[$zoneOrProductIndex])) {
+        return (int) $map[$zoneOrProductIndex];
+    }
+
+    return $zoneOrProductIndex - 1;
+}
+
+/** @return array<string, mixed>|null */
+function ep_get_encarte_item(int $zoneOrProductIndex, array $itens, array $render_opts = []): ?array
+{
+    $idx = ep_resolve_encarte_item_index($zoneOrProductIndex, $render_opts);
+    if ($idx < 0 || !isset($itens[$idx])) {
+        return null;
+    }
+
+    return $itens[$idx];
+}
+
+function ep_get_dynamic_text_value(string $textType, int $linkedZone, array $itens, array $render_opts = []): string
+{
+    $item = ep_get_encarte_item($linkedZone, $itens, $render_opts);
 
     if ($item === null) {
-        return match ($textType) {
-            'nome_produto' => '[NOME_PRODUTO]',
-            'preco_normal' => '[PRECO_NORMAL]',
-            'preco_promo'  => '[PRECO_PROMO]',
-            'unidade'      => '[UNIDADE]',
-            default        => '',
-        };
+        return '';
     }
 
     return match ($textType) {
@@ -446,11 +527,10 @@ function ep_fabric_group_child_bbox(array $group, array $child): array
 }
 
 /** Renderiza card de produto completo (grupo Fabric com foto + textos). */
-function ep_render_product_card(array $group, string $base_path, array $itens): string
+function ep_render_product_card(array $group, string $base_path, array $itens, array $render_opts = []): string
 {
     $productIndex = (int) ($group['productIndex'] ?? $group['zoneId'] ?? 1);
-    $idx = $productIndex - 1;
-    $item = ($idx >= 0 && isset($itens[$idx])) ? $itens[$idx] : null;
+    $item = ep_get_encarte_item($productIndex, $itens, $render_opts);
     $html = '';
 
     $hasFotoPart = false;
@@ -532,7 +612,7 @@ function ep_render_product_card(array $group, string $base_path, array $itens): 
 
         if (!empty($child['isDynamicText'])) {
             $textType = (string) ($child['textType'] ?? $part);
-            $text = ep_get_dynamic_text_value($textType, $productIndex, $itens);
+            $text = ep_get_dynamic_text_value($textType, $productIndex, $itens, $render_opts);
             $fill = htmlspecialchars((string) ($child['fill'] ?? '#ffffff'), ENT_QUOTES, 'UTF-8');
             $gScaleY = abs((float) ($group['scaleY'] ?? 1));
             $cScaleY = abs((float) ($child['scaleY'] ?? 1));
@@ -585,7 +665,7 @@ function ep_render_fabric_object(array $obj, string $base_path, array $itens = [
     }
 
     if (!empty($obj['isProductCard']) && $type === 'group') {
-        return ep_render_product_card($obj, $base_path, $itens);
+        return ep_render_product_card($obj, $base_path, $itens, $render_opts);
     }
 
     $bbox = ep_fabric_bbox($obj);
@@ -608,8 +688,7 @@ function ep_render_fabric_object(array $obj, string $base_path, array $itens = [
         $width = $bbox['width'];
         $height = $bbox['height'];
 
-        $idx = $zoneId - 1;
-        $item = ($idx >= 0 && isset($itens[$idx])) ? $itens[$idx] : null;
+        $item = ep_get_encarte_item($zoneId, $itens, $render_opts);
 
         if ($item === null) {
             return sprintf(
@@ -667,6 +746,10 @@ function ep_render_fabric_object(array $obj, string $base_path, array $itens = [
         }
 
         if ($src === '') {
+            if ($name === 'palco') {
+                error_log('[Central Marketing] Palco sem src resolvido: ' . $srcRel);
+            }
+
             return '';
         }
 
@@ -708,11 +791,18 @@ function ep_render_fabric_object(array $obj, string $base_path, array $itens = [
         if (!empty($obj['isDynamicText'])) {
             $textType = (string) ($obj['textType'] ?? '');
             $linkedZone = (int) ($obj['linkedZone'] ?? 1);
-            $text = ep_get_dynamic_text_value($textType, $linkedZone, $itens);
+            $text = ep_get_dynamic_text_value($textType, $linkedZone, $itens, $render_opts);
         } else {
-            $text = htmlspecialchars((string) ($obj['text'] ?? ''), ENT_QUOTES, 'UTF-8');
-            if ($name === 'texto_legal' && !empty($render_opts['texto_legal_rodape'])) {
-                $text = htmlspecialchars((string) $render_opts['texto_legal_rodape'], ENT_QUOTES, 'UTF-8');
+            $rawText = (string) ($obj['text'] ?? '');
+            $textTypeStatic = ep_match_static_placeholder_text($rawText);
+            if ($textTypeStatic !== null) {
+                $linkedZone = (int) ($obj['linkedZone'] ?? 1);
+                $text = ep_get_dynamic_text_value($textTypeStatic, $linkedZone, $itens, $render_opts);
+            } else {
+                $text = htmlspecialchars($rawText, ENT_QUOTES, 'UTF-8');
+                if ($name === 'texto_legal' && !empty($render_opts['texto_legal_rodape'])) {
+                    $text = htmlspecialchars((string) $render_opts['texto_legal_rodape'], ENT_QUOTES, 'UTF-8');
+                }
             }
         }
 

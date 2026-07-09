@@ -123,16 +123,16 @@ tailwind.config = {
 <div class="editor-layout flex flex-1 min-h-0">
   <aside class="editor-sidebar flex flex-col shrink-0">
     <nav class="editor-tabs flex" role="tablist">
-      <button type="button" class="editor-tab is-active" data-tab="upload" role="tab" aria-selected="true">Upload</button>
+      <button type="button" class="editor-tab" data-tab="upload" role="tab" aria-selected="false">Upload</button>
       <button type="button" class="editor-tab" data-tab="biblioteca" role="tab" aria-selected="false">Elementos</button>
-      <button type="button" class="editor-tab" data-tab="fundo" role="tab" aria-selected="false">Fundo</button>
+      <button type="button" class="editor-tab is-active" data-tab="fundo" role="tab" aria-selected="true">Fundo</button>
       <button type="button" class="editor-tab" data-tab="textos" role="tab" aria-selected="false">Textos</button>
       <button type="button" class="editor-tab" data-tab="produtos" role="tab" aria-selected="false">Produtos</button>
       <button type="button" class="editor-tab" data-tab="camadas" role="tab" aria-selected="false">Camadas</button>
     </nav>
 
     <div class="editor-tab-panels flex-1 overflow-y-auto">
-      <section id="tab-upload" class="editor-tab-panel" role="tabpanel">
+      <section id="tab-upload" class="editor-tab-panel hidden" role="tabpanel" hidden>
         <div class="editor-section">
           <h4 class="editor-section-title">Upload de elemento</h4>
           <p class="editor-section-desc">Produtos e elementos avulsos (fundo removido). Para o design completo de fundo, use a aba <strong>Fundo</strong>.</p>
@@ -159,7 +159,7 @@ tailwind.config = {
         </div>
       </section>
 
-      <section id="tab-fundo" class="editor-tab-panel hidden" role="tabpanel" hidden>
+      <section id="tab-fundo" class="editor-tab-panel" role="tabpanel">
         <div class="editor-section">
           <h4 class="editor-section-title">Cores do modelo</h4>
           <div class="editor-color-grid">

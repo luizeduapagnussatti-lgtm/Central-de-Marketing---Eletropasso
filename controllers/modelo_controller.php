@@ -246,7 +246,23 @@ class ModeloController
             marketing_json_response(false, null, 'Arquivo de fundo nao enviado.', 422);
         }
 
-        $mime = (string) ($_FILES['fundo']['type'] ?? '');
+        $maxMb = (int) (marketing_config('max_upload_size_mb', '10') ?? 10);
+        $maxBytes = $maxMb * 1024 * 1024;
+
+        if ((int) $_FILES['fundo']['size'] > $maxBytes) {
+            marketing_json_response(false, null, "Arquivo excede {$maxMb}MB.", 422);
+        }
+
+        $mime = mime_content_type($_FILES['fundo']['tmp_name']);
+        if ($mime === false) {
+            $mime = (string) ($_FILES['fundo']['type'] ?? '');
+        }
+
+        $allowed = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
+        if (!in_array(strtolower($mime), $allowed, true)) {
+            marketing_json_response(false, null, 'Formato invalido. Use PNG ou JPEG.', 422);
+        }
+
         $tmp = (string) $_FILES['fundo']['tmp_name'];
 
         try {

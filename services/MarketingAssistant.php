@@ -24,6 +24,11 @@ TXT;
     private string $apiKey;
     private string $model;
     private string $rembgBin;
+    private string $rembgModel;
+    private bool $rembgAlphaMatting;
+    private bool $rembgPostProcessMask;
+    private bool $rembgWhiteRefine;
+    private int $rembgWhiteTolerance;
     private int $timeout = 25;
 
     public function __construct()
@@ -31,6 +36,11 @@ TXT;
         $this->apiKey = marketing_config('gemini_api_key', marketing_env('GEMINI_API_KEY', '')) ?? '';
         $this->model = marketing_config('gemini_model', marketing_env('GEMINI_MODEL', 'gemini-2.5-flash')) ?? 'gemini-2.5-flash';
         $this->rembgBin = marketing_config('rembg_bin', marketing_env('REMBG_BIN', 'rembg')) ?? 'rembg';
+        $this->rembgModel = marketing_config('rembg_model', marketing_env('REMBG_MODEL', 'birefnet-general')) ?? 'birefnet-general';
+        $this->rembgAlphaMatting = marketing_config_bool('rembg_alpha_matting', marketing_env('REMBG_ALPHA_MATTING', '1'));
+        $this->rembgPostProcessMask = marketing_config_bool('rembg_post_process_mask', marketing_env('REMBG_POST_PROCESS_MASK', '1'));
+        $this->rembgWhiteRefine = marketing_config_bool('rembg_white_refine', marketing_env('REMBG_WHITE_REFINE', '1'));
+        $this->rembgWhiteTolerance = max(10, min(80, (int) (marketing_config('rembg_white_tolerance', marketing_env('REMBG_WHITE_TOLERANCE', '42')) ?? 42)));
     }
 
     public function normalizarNome(string $nomeErp): string
@@ -131,33 +141,243 @@ TXT;
             $caminhoDestino = preg_replace('/\.[^.]+$/', '.png', $caminhoDestino) ?? $caminhoDestino . '.png';
         }
 
-        $rembgArg = escapeshellarg($this->rembgBin);
-        $inputArg = escapeshellarg($caminhoOriginal);
-        $outputArg = escapeshellarg($caminhoDestino);
+        $modelos = $this->modelosRembgTentativa();
+        $resultado = null;
+        $modeloUsado = '';
 
-        $cmd = "{$rembgArg} i {$inputArg} {$outputArg} 2>&1";
-        $output = [];
-        $exitCode = 0;
-        exec($cmd, $output, $exitCode);
+        foreach ($modelos as $modelo) {
+            $cmd = $this->montarComandoRembg($caminhoOriginal, $caminhoDestino, $modelo);
+            $resultado = $this->executarComandoComTimeout($cmd, 120);
+            $modeloUsado = $modelo;
 
-        if ($exitCode !== 0 || !is_file($caminhoDestino)) {
-            $msgSaida = trim(implode("\n", $output));
+            if ($resultado['ok'] && is_file($caminhoDestino)) {
+                break;
+            }
+
+            if (is_file($caminhoDestino)) {
+                @unlink($caminhoDestino);
+            }
+        }
+
+        if ($resultado === null || !$resultado['ok'] || !is_file($caminhoDestino)) {
+            $msgSaida = trim((string) ($resultado['output'] ?? ''));
             $erro = $msgSaida !== ''
                 ? 'Rembg falhou: ' . $msgSaida
-                : 'Rembg falhou (codigo ' . $exitCode . '). Verifique se o executavel esta instalado.';
+                : 'Rembg falhou (codigo ' . (int) ($resultado['exit_code'] ?? -1) . '). Verifique se o executavel esta instalado.';
+
+            if (!empty($resultado['timed_out'])) {
+                $erro = 'Rembg excedeu o tempo limite (120s). Use imagens menores ou verifique a instalacao do rembg.';
+            }
 
             LoggerService::warning('Rembg falhou', [
-                'exit_code' => $exitCode,
-                'cmd'       => $this->rembgBin . ' i [input] [output]',
+                'exit_code' => $resultado['exit_code'] ?? -1,
+                'timed_out' => $resultado['timed_out'] ?? false,
+                'modelo'    => $modeloUsado,
+                'cmd'       => $this->rembgBin . ' i -m [model] [input] [output]',
                 'output'    => $msgSaida,
             ]);
 
             return ['ok' => false, 'erro' => $erro];
         }
 
-        LoggerService::info('Rembg OK', ['destino' => $caminhoDestino]);
+        if ($this->rembgWhiteRefine) {
+            $this->refinarPixelsFundoClaro($caminhoDestino, $caminhoOriginal);
+        }
+
+        LoggerService::info('Rembg OK', [
+            'destino' => $caminhoDestino,
+            'modelo'  => $modeloUsado,
+            'refine'  => $this->rembgWhiteRefine,
+        ]);
 
         return ['ok' => true, 'erro' => null];
+    }
+
+    /** @return list<string> */
+    private function modelosRembgTentativa(): array
+    {
+        $principal = $this->normalizarModeloRembg($this->rembgModel);
+        $fallback = 'u2net';
+
+        if ($principal === $fallback) {
+            return [$fallback];
+        }
+
+        return [$principal, $fallback];
+    }
+
+    private function normalizarModeloRembg(string $modelo): string
+    {
+        $modelo = strtolower(trim($modelo));
+        $permitidos = [
+            'birefnet-general',
+            'birefnet-general-lite',
+            'bria-rmbg',
+            'isnet-general-use',
+            'u2net',
+            'u2netp',
+            'silueta',
+        ];
+
+        return in_array($modelo, $permitidos, true) ? $modelo : 'birefnet-general';
+    }
+
+    private function montarComandoRembg(string $caminhoOriginal, string $caminhoDestino, string $modelo): string
+    {
+        $partes = [
+            escapeshellarg($this->rembgBin),
+            'i',
+            '-m',
+            escapeshellarg($modelo),
+        ];
+
+        if ($this->rembgPostProcessMask) {
+            $partes[] = '-ppm';
+        }
+
+        if ($this->rembgAlphaMatting) {
+            $partes[] = '-a';
+            $partes[] = '-ab';
+            $partes[] = '18';
+            $partes[] = '-af';
+            $partes[] = '235';
+            $partes[] = '-ae';
+            $partes[] = '12';
+        }
+
+        $partes[] = escapeshellarg($caminhoOriginal);
+        $partes[] = escapeshellarg($caminhoDestino);
+
+        return implode(' ', $partes) . ' 2>&1';
+    }
+
+    /**
+     * Remove pixels claros residuais (ex.: fundo branco no miolo de rolos de cabo).
+     */
+    private function refinarPixelsFundoClaro(string $caminhoPng, string $caminhoOriginal): void
+    {
+        if (!function_exists('imagecreatefrompng') || !is_file($caminhoPng)) {
+            return;
+        }
+
+        $img = @imagecreatefrompng($caminhoPng);
+        if ($img === false) {
+            return;
+        }
+
+        imagealphablending($img, false);
+        imagesavealpha($img, true);
+
+        $bg = $this->detectarCorFundoReferencia($caminhoOriginal);
+        $tol = $this->rembgWhiteTolerance;
+        $w = imagesx($img);
+        $h = imagesy($img);
+        $transparente = imagecolorallocatealpha($img, 0, 0, 0, 127);
+
+        for ($y = 0; $y < $h; $y++) {
+            for ($x = 0; $x < $w; $x++) {
+                $rgba = imagecolorat($img, $x, $y);
+                $alpha = ($rgba >> 24) & 0x7F;
+                if ($alpha >= 127) {
+                    continue;
+                }
+
+                $r = ($rgba >> 16) & 0xFF;
+                $g = ($rgba >> 8) & 0xFF;
+                $b = $rgba & 0xFF;
+
+                if ($this->pixelEhFundoClaroResidual($r, $g, $b, $bg, $tol)) {
+                    imagesetpixel($img, $x, $y, $transparente);
+                }
+            }
+        }
+
+        imagepng($img, $caminhoPng);
+        imagedestroy($img);
+    }
+
+    /** @return array{r: int, g: int, b: int} */
+    private function detectarCorFundoReferencia(string $caminhoOriginal): array
+    {
+        $src = $this->carregarImagemGd($caminhoOriginal);
+        if ($src === false) {
+            return ['r' => 255, 'g' => 255, 'b' => 255];
+        }
+
+        $w = imagesx($src);
+        $h = imagesy($src);
+        if ($w < 2 || $h < 2) {
+            imagedestroy($src);
+
+            return ['r' => 255, 'g' => 255, 'b' => 255];
+        }
+
+        $pontos = [
+            [0, 0],
+            [$w - 1, 0],
+            [0, $h - 1],
+            [$w - 1, $h - 1],
+            [(int) ($w / 2), 0],
+            [(int) ($w / 2), $h - 1],
+        ];
+
+        $rs = 0;
+        $gs = 0;
+        $bs = 0;
+        $n = 0;
+
+        foreach ($pontos as [$x, $y]) {
+            $c = imagecolorat($src, $x, $y);
+            $rs += ($c >> 16) & 0xFF;
+            $gs += ($c >> 8) & 0xFF;
+            $bs += $c & 0xFF;
+            $n++;
+        }
+
+        imagedestroy($src);
+
+        return [
+            'r' => (int) round($rs / $n),
+            'g' => (int) round($gs / $n),
+            'b' => (int) round($bs / $n),
+        ];
+    }
+
+    /** @param array{r: int, g: int, b: int} $bg */
+    private function pixelEhFundoClaroResidual(int $r, int $g, int $b, array $bg, int $tol): bool
+    {
+        $max = max($r, $g, $b);
+        $min = min($r, $g, $b);
+
+        if ($max < 185) {
+            return false;
+        }
+
+        if (($max - $min) > 28) {
+            return false;
+        }
+
+        $dr = $r - $bg['r'];
+        $dg = $g - $bg['g'];
+        $db = $b - $bg['b'];
+
+        return sqrt(($dr * $dr) + ($dg * $dg) + ($db * $db)) <= $tol;
+    }
+
+    /** @return \GdImage|false */
+    private function carregarImagemGd(string $path)
+    {
+        $mime = mime_content_type($path);
+        if ($mime === false) {
+            $mime = '';
+        }
+
+        return match ($mime) {
+            'image/png'             => @imagecreatefrompng($path),
+            'image/jpeg', 'image/jpg' => @imagecreatefromjpeg($path),
+            'image/webp'            => function_exists('imagecreatefromwebp') ? @imagecreatefromwebp($path) : false,
+            default                 => @imagecreatefromjpeg($path) ?: @imagecreatefrompng($path),
+        };
     }
 
     /**
@@ -267,6 +487,69 @@ TXT;
             'Ofertas Eletropasso — ' . $count . ' produtos em promocao',
             'Promocao Imperdivel — Materiais Eletricos',
             'Super Ofertas — Confira os precos especiais',
+        ];
+    }
+
+    /**
+     * Executa comando externo com limite de tempo (evita travamento infinito no Rembg).
+     *
+     * @return array{ok: bool, exit_code: int, output: string, timed_out: bool}
+     */
+    private function executarComandoComTimeout(string $cmd, int $timeoutSegundos = 90): array
+    {
+        $timeoutSegundos = max(5, min(300, $timeoutSegundos));
+        $descriptors = [
+            0 => ['pipe', 'r'],
+            1 => ['pipe', 'w'],
+            2 => ['pipe', 'w'],
+        ];
+
+        $proc = @proc_open($cmd, $descriptors, $pipes);
+        if (!is_resource($proc)) {
+            return ['ok' => false, 'exit_code' => -1, 'output' => 'Nao foi possivel iniciar o processo.', 'timed_out' => false];
+        }
+
+        fclose($pipes[0]);
+        stream_set_blocking($pipes[1], false);
+        stream_set_blocking($pipes[2], false);
+
+        $output = '';
+        $inicio = time();
+        $timedOut = false;
+
+        while (true) {
+            $output .= stream_get_contents($pipes[1]) ?: '';
+            $output .= stream_get_contents($pipes[2]) ?: '';
+
+            $status = proc_get_status($proc);
+            if (!$status['running']) {
+                break;
+            }
+
+            if ((time() - $inicio) >= $timeoutSegundos) {
+                $timedOut = true;
+                proc_terminate($proc, 9);
+                break;
+            }
+
+            usleep(100000);
+        }
+
+        $output .= stream_get_contents($pipes[1]) ?: '';
+        $output .= stream_get_contents($pipes[2]) ?: '';
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+
+        $exitCode = proc_close($proc);
+        if ($timedOut) {
+            return ['ok' => false, 'exit_code' => $exitCode, 'output' => $output, 'timed_out' => true];
+        }
+
+        return [
+            'ok'        => $exitCode === 0,
+            'exit_code' => $exitCode,
+            'output'    => $output,
+            'timed_out' => false,
         ];
     }
 }

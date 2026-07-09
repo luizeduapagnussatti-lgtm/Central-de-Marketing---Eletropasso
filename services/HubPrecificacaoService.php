@@ -82,12 +82,16 @@ class HubPrecificacaoService
 
     private function normalizarUnidade(string $unidade): string
     {
-        $u = strtolower(trim($unidade));
+        $u = strtoupper(trim($unidade));
+        if ($u === '') {
+            return 'und';
+        }
 
         return match ($u) {
-            'm', 'mt', 'metro', 'metros', 'met', 'metr' => 'm',
-            'rl', 'rolo', 'rolos' => 'rl',
-            default => $u !== '' ? $u : 'und',
+            'M', 'MT', 'MET', 'METRO', 'METROS', 'METR' => 'm',
+            'RL', 'ROLO', 'ROLOS' => 'rl',
+            'UN', 'UND', 'UNID', 'UNIDADE', 'PC', 'PÇ', 'PCA', 'PECA', 'PEÇA' => 'und',
+            default => strtolower($u),
         };
     }
 }

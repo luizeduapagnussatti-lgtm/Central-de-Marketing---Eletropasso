@@ -16,6 +16,8 @@ class EncarteRenderService
     public function gerar(int $encarteId): array
     {
         $inicio = microtime(true);
+        $this->validarAmbienteRender();
+
         $encarte = $this->encarteService->buscarPorId($encarteId);
 
         if ($encarte === null) {
@@ -100,9 +102,24 @@ class EncarteRenderService
 
     private function executarPuppeteer(string $htmlPath, string $formato, string $outputPath): void
     {
-        $nodeBin = marketing_env('NODE_BIN', 'node');
+        $nodeBin = marketing_env('NODE_BIN', 'node') ?? 'node';
         $timeout = (int) marketing_env('PUPPETEER_TIMEOUT_MS', '30000');
         $script = marketing_path('bin/render_encarte.js');
+
+        if (!is_file($script)) {
+            throw new RuntimeException('Script Puppeteer nao encontrado: bin/render_encarte.js');
+        }
+
+        if (!is_file($htmlPath)) {
+            throw new RuntimeException('HTML temporario do encarte nao encontrado.');
+        }
+
+        $nodeModules = marketing_path('node_modules/puppeteer');
+        if (!is_dir($nodeModules)) {
+            throw new RuntimeException(
+                'Puppeteer nao instalado. Execute npm install na pasta da Central de Marketing.'
+            );
+        }
 
         $nodeArg = escapeshellarg($nodeBin);
         $scriptArg = escapeshellarg($script);
@@ -115,10 +132,37 @@ class EncarteRenderService
 
         $output = [];
         $exitCode = 0;
-        exec($cmd, $output, $exitCode);
+        $execOk = exec($cmd, $output, $exitCode);
+
+        if ($execOk === false && $exitCode === 0 && $output === []) {
+            throw new RuntimeException(
+                'Comando Node/Puppeteer nao executou. Verifique se exec() esta habilitado no PHP e NODE_BIN no .env.'
+            );
+        }
 
         if ($exitCode !== 0) {
-            throw new RuntimeException('Puppeteer falhou: ' . implode("\n", $output));
+            $detalhe = trim(implode("\n", $output));
+            if ($detalhe === '') {
+                $detalhe = "exit code {$exitCode}";
+            }
+            throw new RuntimeException('Puppeteer falhou: ' . $detalhe);
+        }
+    }
+
+    private function validarAmbienteRender(): void
+    {
+        $disabled = array_filter(array_map('trim', explode(',', (string) ini_get('disable_functions'))));
+        if (!function_exists('exec') || in_array('exec', $disabled, true)) {
+            throw new RuntimeException(
+                'Geracao PNG indisponivel: funcao exec() desabilitada no PHP (php.ini disable_functions).'
+            );
+        }
+
+        $nodeBin = marketing_env('NODE_BIN', 'node') ?? 'node';
+        if ($nodeBin !== 'node' && !is_file($nodeBin)) {
+            throw new RuntimeException(
+                'Node.js nao encontrado em NODE_BIN. Configure o caminho completo no .env da Central de Marketing.'
+            );
         }
     }
 

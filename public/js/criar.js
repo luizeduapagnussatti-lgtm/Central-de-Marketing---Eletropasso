@@ -160,6 +160,17 @@ function renderItens() {
     });
   });
 
+  lista.querySelectorAll('[data-field="sku"]').forEach(input => {
+    input.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      const idx = parseInt(input.dataset.index, 10);
+      if (Number.isNaN(idx)) return;
+      itens[idx].sku = input.value.trim();
+      buscarSku(idx);
+    });
+  });
+
   bindPriceMasks(lista);
 }
 
@@ -226,10 +237,11 @@ async function buscarSku(index) {
 }
 
 function normalizeUnidade(unidade) {
-  const u = String(unidade || 'und').trim().toLowerCase();
-  if (['m', 'mt', 'metro', 'metros', 'met', 'metr'].includes(u)) return 'm';
-  if (['rl', 'rolo', 'rolos'].includes(u)) return 'rl';
-  return u || 'und';
+  const u = String(unidade || 'und').trim().toUpperCase();
+  if (['M', 'MT', 'MET', 'METRO', 'METROS', 'METR'].includes(u)) return 'm';
+  if (['RL', 'ROLO', 'ROLOS'].includes(u)) return 'rl';
+  if (['UN', 'UND', 'UNID', 'UNIDADE', 'PC', 'PÇ', 'PCA', 'PECA', 'PEÇA'].includes(u)) return 'und';
+  return u ? u.toLowerCase() : 'und';
 }
 
 function setHubBuscaLoading(index, loading, message = '') {
@@ -411,7 +423,9 @@ async function salvarEncarte(gerar = false) {
     }
   } catch (e) {
     hideLoader();
-    showAlert(document.querySelector('.app-main'), e.message);
+    const msg = String(e.message || 'Erro ao processar encarte.');
+    showAlert(document.querySelector('.app-main'), msg, 'error');
+    alert(msg);
   }
 }
 

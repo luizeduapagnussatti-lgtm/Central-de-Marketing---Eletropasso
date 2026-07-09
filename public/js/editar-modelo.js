@@ -92,7 +92,7 @@ document.addEventListener('DOMContentLoaded', () => {
       fd.append('formato', formato);
       fd.append('fundo', file);
 
-      showLoader('Enviando palco...');
+      showLoader('Carregando fundo...');
       try {
         const url = new URL('api/index.php', window.location.href);
         url.searchParams.set('recurso', 'modelo');

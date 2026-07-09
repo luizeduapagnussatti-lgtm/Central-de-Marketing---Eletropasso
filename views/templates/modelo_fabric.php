@@ -32,14 +32,16 @@ foreach ($fabric_objects as $fabric_obj) {
 }
 
 $corFundo = htmlspecialchars((string) ($cores['fundo'] ?? '#ffffff'), ENT_QUOTES, 'UTF-8');
-$palco_style = $fundo_src !== '' && !$tem_fabric_palco
-    ? 'background-image: url(' . htmlspecialchars($fundo_src, ENT_QUOTES, 'UTF-8') . '); background-size: cover; background-position: center top;'
-    : 'background-color: ' . $corFundo . ';';
+$palco_style = 'background-color: ' . $corFundo . ';';
+if ($fundo_src !== '') {
+    $palco_style .= ' background-image: url(' . htmlspecialchars($fundo_src, ENT_QUOTES, 'UTF-8') . '); background-size: cover; background-position: center top;';
+}
 
 $render_opts = [
     'texto_legal_rodape' => (string) ($encarte_data['texto_legal_rodape'] ?? ''),
     'modelo_config'      => $modelo_config,
     'formato'            => $formato,
+    'product_zone_map'   => ep_build_encarte_product_zone_map($fabric_objects),
 ];
 ?>
 <!DOCTYPE html>

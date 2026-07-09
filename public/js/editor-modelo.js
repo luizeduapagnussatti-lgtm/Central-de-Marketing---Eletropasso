@@ -2290,6 +2290,47 @@
     document.getElementById('btn-atualizar-camadas')?.addEventListener('click', refreshLayersList);
   }
 
+  const UPLOAD_TIMEOUT_MS = 90000;
+
+  function fetchWithTimeout(url, options = {}, timeoutMs = UPLOAD_TIMEOUT_MS) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const merged = { ...options, signal: controller.signal };
+
+    return fetch(url, merged).finally(() => clearTimeout(timer));
+  }
+
+  function readImageDimensions(file) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        resolve({ width: img.naturalWidth || img.width, height: img.naturalHeight || img.height });
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error('Nao foi possivel ler as dimensoes da imagem.'));
+      };
+      img.src = url;
+    });
+  }
+
+  function isPalcoSizedImage(imgW, imgH) {
+    const canvasW = dims.width;
+    const canvasH = dims.height;
+    const tolerance = 0.15;
+    const wRatio = imgW / canvasW;
+    const hRatio = imgH / canvasH;
+    return wRatio >= 1 - tolerance && wRatio <= 1 + tolerance
+      && hRatio >= 1 - tolerance && hRatio <= 1 + tolerance;
+  }
+
+  function activateEditorTab(tabName) {
+    const tab = document.querySelector(`.editor-tab[data-tab="${tabName}"]`);
+    if (tab) tab.click();
+  }
+
   function bindUploadElemento() {
     const input = document.getElementById('input-upload-elemento');
     if (!input) return;
@@ -2298,16 +2339,33 @@
       const file = input.files?.[0];
       if (!file) return;
 
+      try {
+        const { width: imgW, height: imgH } = await readImageDimensions(file);
+        if (isPalcoSizedImage(imgW, imgH)) {
+          activateEditorTab('fundo');
+          showEditorAlert(
+            `Imagem ${imgW}×${imgH}px tem o tamanho do canvas (${dims.width}×${dims.height}). Use a aba Fundo para enviar o palco completo — evita travamento no Rembg.`,
+            'error'
+          );
+          input.value = '';
+          return;
+        }
+      } catch (err) {
+        showEditorAlert(err.message || 'Erro ao validar imagem.');
+        input.value = '';
+        return;
+      }
+
       const fd = new FormData();
       fd.append('elemento', file);
       fd.append('modelo_id', String(EDITOR_DATA.modelo.id));
 
-      showLoader('Removendo fundo...');
+      showLoader('Removendo fundo do elemento...');
       try {
         const url = new URL('api/index.php', window.location.href);
         url.searchParams.set('recurso', 'modelo');
         url.searchParams.set('acao', 'upload_elemento');
-        const resp = await fetch(url, { method: 'POST', body: fd });
+        const resp = await fetchWithTimeout(url, { method: 'POST', body: fd });
         const json = await resp.json();
         if (!json.success) throw new Error(json.error || 'Erro no upload.');
 
@@ -2347,7 +2405,10 @@
           { crossOrigin: 'anonymous' }
         );
       } catch (err) {
-        showEditorAlert(err.message);
+        const msg = err.name === 'AbortError'
+          ? 'Upload excedeu o tempo limite (90s). Tente uma imagem menor ou use a aba Fundo para palco completo.'
+          : err.message;
+        showEditorAlert(msg);
       } finally {
         hideLoader();
         input.value = '';
@@ -2369,12 +2430,12 @@
       fd.append('formato', formato);
       fd.append('fundo', file);
 
-      showLoader('Enviando palco...');
+      showLoader('Carregando fundo...');
       try {
         const url = new URL('api/index.php', window.location.href);
         url.searchParams.set('recurso', 'modelo');
         url.searchParams.set('acao', 'upload_fundo');
-        const resp = await fetch(url, { method: 'POST', body: fd });
+        const resp = await fetchWithTimeout(url, { method: 'POST', body: fd });
         const json = await resp.json();
         if (!json.success) throw new Error(json.error || 'Erro ao enviar palco.');
 
@@ -2394,7 +2455,10 @@
 
         showEditorAlert('Palco enviado. Ajuste posicao e zoom com duplo clique no fundo.', 'success');
       } catch (err) {
-        showEditorAlert(err.message);
+        const msg = err.name === 'AbortError'
+          ? 'Upload excedeu o tempo limite (90s). Tente uma imagem menor ou use a aba Fundo para palco completo.'
+          : err.message;
+        showEditorAlert(msg);
       } finally {
         hideLoader();
         input.value = '';
@@ -2551,6 +2615,7 @@
     bindProdutosTab();
     bindNavigationGuard();
     closePropsPanel();
+    activateEditorTab('fundo');
 
     document.getElementById('input-nome')?.addEventListener('input', markEditorDirty);
 

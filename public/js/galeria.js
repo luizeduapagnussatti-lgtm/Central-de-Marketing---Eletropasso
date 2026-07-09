@@ -25,7 +25,10 @@ function encartePreviewUrl(path) {
 
 function thumbMarkup(enc) {
   if (!enc.caminho_imagem_final) {
-    const msg = enc.status === 'rascunho' ? 'Rascunho — sem preview' : 'Sem imagem';
+    let msg = 'Sem imagem';
+    if (enc.status === 'rascunho') msg = 'Rascunho — sem preview';
+    else if (enc.status === 'erro') msg = 'Falha na geracao';
+    else if (enc.status === 'gerando') msg = 'Gerando PNG...';
     return `<div class="placeholder">${escHtml(msg)}</div>`;
   }
 
@@ -78,12 +81,17 @@ function renderGaleria(container, grupos) {
               <div class="encarte-meta">v${enc.versao} · ${enc.quantidade_itens} item${enc.quantidade_itens !== 1 ? 's' : ''}</div>
               <span class="status-badge status-${enc.status}">${escHtml(statusLabel)}</span>
             </div>
+            ${enc.status === 'erro' && enc.erro_geracao ? `
+              <p class="encarte-erro-msg" title="${escAttr(enc.erro_geracao)}">${escHtml(enc.erro_geracao)}</p>
+            ` : ''}
             <div class="encarte-actions">
               ${enc.caminho_imagem_final ? `
                 <button type="button" class="btn btn-sm btn-secondary" onclick="openLightbox('${escAttr(imgUrl)}')">Visualizar</button>
                 <a href="${escAttr(imgUrl)}" download class="btn btn-sm btn-primary">Baixar PNG</a>
               ` : ''}
-              <a href="criar.php?id=${enc.id}" class="btn btn-sm btn-secondary">Editar</a>
+              ${enc.status === 'erro' || enc.status === 'rascunho' ? `
+                <button type="button" class="btn btn-sm btn-primary" onclick="gerarEncarte(${enc.id})">Gerar PNG</button>
+              ` : ''}
               <button type="button" class="btn btn-sm btn-secondary" onclick="novaVersao(${enc.id})">Nova Versao</button>
             </div>
             <div class="encarte-actions-secondary">
@@ -106,6 +114,29 @@ async function novaVersao(id) {
     window.location.href = `criar.php?id=${data.id}`;
   } catch (e) {
     alert(e.message);
+  }
+}
+
+async function gerarEncarte(id) {
+  if (!confirm('Gerar PNG deste encarte agora?')) return;
+
+  try {
+    showLoader('Gerando PNG do encarte...');
+    await apiCall('encarte', 'gerar', { method: 'POST', body: { id } });
+    hideLoader();
+    const container = document.getElementById('galeria');
+    const data = await apiCall('encarte', 'listar');
+    renderGaleria(container, data.grupos || {});
+  } catch (e) {
+    hideLoader();
+    alert(e.message || 'Falha ao gerar PNG.');
+    try {
+      const container = document.getElementById('galeria');
+      const data = await apiCall('encarte', 'listar');
+      renderGaleria(container, data.grupos || {});
+    } catch (_) {
+      /* ignore refresh failure */
+    }
   }
 }
 
