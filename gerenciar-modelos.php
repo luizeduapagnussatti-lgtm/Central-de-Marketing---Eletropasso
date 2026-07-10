@@ -82,7 +82,7 @@ $modelos = $modeloService->listarTodos();
         <?php else: ?>
           <div class="modelo-preview modelo-preview--empty">
             <div class="modelo-preview-placeholder">
-              <span class="modelo-preview-icon" aria-hidden="true">&#9889;</span>
+              <span class="modelo-preview-icon" aria-hidden="true">&#128196;</span>
               <span>Preview em breve</span>
             </div>
           </div>

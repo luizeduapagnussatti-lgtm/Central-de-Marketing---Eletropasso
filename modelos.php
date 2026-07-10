@@ -134,7 +134,7 @@ $modelos = $encarteService->listarModelos();
 
             <div class="modelo-preview-placeholder">
 
-              <span class="modelo-preview-icon" aria-hidden="true">&#9889;</span>
+              <span class="modelo-preview-icon" aria-hidden="true">&#128196;</span>
 
               <span>Preview em breve</span>
 

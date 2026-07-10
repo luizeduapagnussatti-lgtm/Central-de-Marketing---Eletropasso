@@ -314,20 +314,15 @@
       });
 
       if (isProductCard(cloned)) {
-        syncZoneCounterFromCanvas();
-        zoneCounter += 1;
-        updateCardProductIndex(cloned, zoneCounter);
+        const newIndex = nextAvailableProductZoneId();
+        updateCardProductIndex(cloned, newIndex);
         cloned.set({
           left: (obj.left || 0) + 48,
           top: (obj.top || 0) + 48,
         });
       } else if (isProductZone(cloned) && !isProductCard(cloned)) {
-        syncZoneCounterFromCanvas();
-        zoneCounter += 1;
-        cloned.set({
-          zoneId: zoneCounter,
-          name: `zona_produto_${zoneCounter}`,
-        });
+        const newIndex = nextAvailableProductZoneId();
+        applyProductZoneIndex(cloned, newIndex);
       }
 
       canvas.add(cloned);
@@ -1160,9 +1155,11 @@
       showEditorAlert('Elemento bloqueado. Desbloqueie antes de excluir.');
       return;
     }
+    const deletedIndex = resolveProductBlockIndex(obj);
     canvas.remove(obj);
     canvas.discardActiveObject();
     canvas.renderAll();
+    if (deletedIndex) cleanupOrphanProductElements(deletedIndex);
     syncZoneCounterFromCanvas();
     closePropsPanel();
     refreshLayersList();
@@ -1327,17 +1324,74 @@
   }
 
   function syncZoneCounterFromCanvas() {
-    let max = 0;
+    const used = collectUsedProductZoneIds();
+    zoneCounter = used.size > 0 ? Math.max(...used) : 0;
+  }
+
+  function collectUsedProductZoneIds() {
+    const used = new Set();
     canvas?.getObjects().forEach((obj) => {
-      if (obj.isProductCard && obj.productIndex) {
-        max = Math.max(max, obj.productIndex);
-      } else if (obj.isProductZone && obj.zoneId) {
-        max = Math.max(max, obj.zoneId);
-      } else if (obj.isDynamicText && obj.linkedZone) {
-        max = Math.max(max, obj.linkedZone);
+      if (isProductCard(obj)) {
+        const idx = Number(obj.productIndex || obj.zoneId || 0);
+        if (idx > 0) used.add(idx);
+        return;
+      }
+      if (obj.isProductZone && !obj.isProductCard) {
+        const idx = Number(obj.zoneId || 0);
+        if (idx > 0) used.add(idx);
       }
     });
-    zoneCounter = max;
+    return used;
+  }
+
+  function nextAvailableProductZoneId() {
+    const used = collectUsedProductZoneIds();
+    let candidate = 1;
+    while (used.has(candidate)) {
+      candidate += 1;
+    }
+    zoneCounter = Math.max(zoneCounter, candidate);
+    return candidate;
+  }
+
+  function applyProductZoneIndex(obj, index) {
+    if (!obj || !index) return;
+
+    if (isProductCard(obj)) {
+      updateCardProductIndex(obj, index);
+      return;
+    }
+
+    if (obj.isProductZone && !obj.isProductCard) {
+      obj.set({
+        zoneId: index,
+        name: `zona_produto_${index}`,
+      });
+      if (obj.type === 'group' && typeof obj.getObjects === 'function') {
+        obj.getObjects().forEach((child) => {
+          if (child.type === 'text' && !child.isDynamicText) {
+            child.set({ text: `Zona de Produto ${index}` });
+          }
+        });
+      }
+      obj.setCoords();
+    }
+  }
+
+  function cleanupOrphanProductElements(deletedIndex) {
+    const idx = Number(deletedIndex || 0);
+    if (!idx || !canvas) return;
+
+    const stillHasBlock = canvas.getObjects().some((obj) => {
+      if (isProductCard(obj)) return Number(obj.productIndex || obj.zoneId || 0) === idx;
+      if (obj.isProductZone && !obj.isProductCard) return Number(obj.zoneId || 0) === idx;
+      return false;
+    });
+    if (stillHasBlock) return;
+
+    canvas.getObjects()
+      .filter((obj) => obj.isDynamicText && Number(obj.linkedZone || 0) === idx)
+      .forEach((obj) => canvas.remove(obj));
   }
 
   function resolveProductBlockIndex(obj) {
@@ -1433,8 +1487,7 @@
     syncZoneCounterFromCanvas();
     let productIndex = inferProductIndexFromObjects(objects);
     if (!productIndex) {
-      zoneCounter += 1;
-      productIndex = zoneCounter;
+      productIndex = nextAvailableProductZoneId();
     } else {
       zoneCounter = Math.max(zoneCounter, productIndex);
     }
@@ -1455,9 +1508,7 @@
       return;
     }
 
-    syncZoneCounterFromCanvas();
-    zoneCounter += 1;
-    const newIndex = zoneCounter;
+    const newIndex = nextAvailableProductZoneId();
     const offsetX = 56;
     const offsetY = 56;
     const clones = [];
@@ -1560,9 +1611,7 @@
   }
 
   function addProductCard() {
-    syncZoneCounterFromCanvas();
-    zoneCounter += 1;
-    const productIndex = zoneCounter;
+    const productIndex = nextAvailableProductZoneId();
     const cardW = dims.width * DISPLAY_SCALE * 0.44;
     const cardH = dims.height * DISPLAY_SCALE * 0.16;
     const cx = canvas.width / 2 - cardW / 2;
@@ -1633,9 +1682,7 @@
       return;
     }
 
-    syncZoneCounterFromCanvas();
-    zoneCounter += 1;
-    const newIndex = zoneCounter;
+    const newIndex = nextAvailableProductZoneId();
 
     card.clone((cloned) => {
       if (!cloned) return;
@@ -1656,8 +1703,7 @@
   }
 
   function addProductZone() {
-    syncZoneCounterFromCanvas();
-    zoneCounter += 1;
+    const zoneId = nextAvailableProductZoneId();
     const w = dims.width * DISPLAY_SCALE * 0.28;
     const h = dims.height * DISPLAY_SCALE * 0.2;
     const cx = canvas.width / 2 - w / 2;
@@ -1674,7 +1720,7 @@
       ry: 8,
     });
 
-    const label = new fabric.Text(`Zona de Produto ${zoneCounter}`, {
+    const label = new fabric.Text(`Zona de Produto ${zoneId}`, {
       fontSize: 14 * DISPLAY_SCALE,
       fill: '#93c5fd',
       fontWeight: '700',
@@ -1689,9 +1735,9 @@
       top: cy,
       originX: 'left',
       originY: 'top',
-      name: `zona_produto_${zoneCounter}`,
+      name: `zona_produto_${zoneId}`,
       isProductZone: true,
-      zoneId: zoneCounter,
+      zoneId,
     });
 
     canvas.add(group);
@@ -1699,7 +1745,7 @@
     canvas.renderAll();
     openPropsPanel(group);
     refreshLayersList();
-    showEditorAlert(`Zona de produto ${zoneCounter} adicionada.`, 'success');
+    showEditorAlert(`Zona de produto ${zoneId} adicionada.`, 'success');
   }
 
   function addDynamicText(textType) {
@@ -1753,7 +1799,38 @@
   }
 
   function captureCanvasThumb() {
-    return canvas.toDataURL({ format: 'jpeg', quality: 0.85, multiplier: 0.15 });
+    if (!canvas) return '';
+
+    const prevActive = canvas.getActiveObject();
+    canvas.discardActiveObject();
+    canvas.renderAll();
+
+    try {
+      const dataUrl = canvas.toDataURL({
+        format: 'png',
+        quality: 1,
+        multiplier: 0.22,
+      });
+      if (prevActive) {
+        canvas.setActiveObject(prevActive);
+        canvas.renderAll();
+      }
+      return dataUrl && dataUrl.length > 120 ? dataUrl : '';
+    } catch (err) {
+      console.warn('[editor-modelo] Falha ao capturar miniatura:', err);
+      if (prevActive) {
+        canvas.setActiveObject(prevActive);
+        canvas.renderAll();
+      }
+      return '';
+    }
+  }
+
+  async function captureCanvasThumbAsync() {
+    await new Promise((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(resolve));
+    });
+    return captureCanvasThumb();
   }
 
   function resizeCanvasWrapper() {
@@ -1880,7 +1957,10 @@
         btn.className = 'asset-item';
         btn.title = asset.label;
         btn.innerHTML = asset.svg + `<span>${asset.label}</span>`;
-        btn.addEventListener('click', () => insertAssetIcon(asset));
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          insertAssetIcon(asset);
+        });
         grid.appendChild(btn);
       });
 
@@ -2096,7 +2176,7 @@
           enforceBackgroundOrder();
           canvas.renderAll();
           refreshLayersList();
-          updateCanvasThumb(captureCanvasThumb());
+          captureCanvasThumbAsync().then((thumb) => updateCanvasThumb(thumb));
           if (autoEdit) enterPalcoEditMode();
           resetEditorDirty();
           editorReady = true;
@@ -2499,7 +2579,7 @@
         normalizePalcoSrcBeforeSave();
         canvas.renderAll();
 
-        const previewDataUrl = captureCanvasThumb();
+        const previewDataUrl = await captureCanvasThumbAsync();
         const fabricState = canvas.toObject(CUSTOM_PROPS.concat(['tipo', 'visible', 'cardPart']));
         const stateReal = reescalarState(fabricState, 1 / DISPLAY_SCALE);
         stateReal.version = fabric.version || '5.3.0';
@@ -2573,7 +2653,7 @@
           body: { id: EDITOR_DATA.modelo.id },
         });
 
-        updateCanvasThumb(captureCanvasThumb());
+        updateCanvasThumb(await captureCanvasThumbAsync());
         showEditorAlert('Preview PNG gerado via Puppeteer.', 'success');
       } catch (err) {
         showEditorAlert(err.message);
