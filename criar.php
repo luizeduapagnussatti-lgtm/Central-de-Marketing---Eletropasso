@@ -102,7 +102,7 @@ $formato_default = (string) ($formatos_permitidos[0] ?? array_key_first($formato
   <section class="form-panel">
     <div class="panel-head">
       <h2>Configuracao do Encarte</h2>
-      <p>Dados gerais da campanha promocional</p>
+      <p>Dados gerais da campanha promocional. A posicao de titulo, validade e rodape no layout e definida pelo modelo escolhido.</p>
     </div>
     <div class="form-grid form-grid--config">
       <div class="form-field form-field--wide">

@@ -39,6 +39,7 @@ if ($fundo_src !== '') {
 
 $render_opts = [
     'texto_legal_rodape' => (string) ($encarte_data['texto_legal_rodape'] ?? ''),
+    'encarte_data'       => is_array($encarte_data ?? null) ? $encarte_data : [],
     'modelo_config'      => $modelo_config,
     'formato'            => $formato,
     'product_zone_map'   => ep_build_encarte_product_zone_map($fabric_objects),

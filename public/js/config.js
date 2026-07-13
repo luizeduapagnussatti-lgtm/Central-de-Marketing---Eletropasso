@@ -13,6 +13,7 @@ const CFG_IDS = {
   gemini_model: 'cfg-gemini-model',
   rembg_bin: 'cfg-rembg-bin',
   rembg_model: 'cfg-rembg-model',
+  rembg_max_edge: 'cfg-rembg-max-edge',
   rembg_alpha_matting: 'cfg-rembg-alpha',
   rembg_post_process_mask: 'cfg-rembg-ppm',
   rembg_white_refine: 'cfg-rembg-white-refine',

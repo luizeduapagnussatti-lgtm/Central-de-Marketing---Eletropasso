@@ -102,8 +102,46 @@
   let contextMenuTarget = null;
   let editorDirty = false;
   let editorReady = false;
+  let cardEditMode = false;
+  let editingCardProductIndex = null;
 
-  const CUSTOM_PROPS = ['name', 'isProductZone', 'zoneId', 'isProductCard', 'productIndex', 'cardPart', 'isDynamicText', 'textType', 'linkedZone', 'isLocked'];
+  const CUSTOM_PROPS = ['name', 'isProductZone', 'zoneId', 'isProductCard', 'productIndex', 'cardPart', 'isDynamicText', 'isCampanhaText', 'textType', 'linkedZone', 'isLocked'];
+
+  const CAMPANHA_TEXT_KEYS = {
+    titulo_linha1: { textType: 'titulo_campanha', name: 'titulo_linha1' },
+    validade_periodo: { textType: 'validade_periodo', name: 'validade_periodo' },
+    texto_legal: { textType: 'texto_legal_rodape', name: 'texto_legal' },
+  };
+
+  const CAMPANHA_TEXT_DEFAULTS = {
+    titulo_campanha: {
+      text: '[TITULO_CAMPANHA]',
+      fontSize: 72,
+      fill: '#ffffff',
+      fontWeight: '900',
+      fontFamily: 'Bebas Neue, Oswald, Impact, sans-serif',
+      leftRatio: 0.08,
+      topRatio: 0.04,
+    },
+    validade_periodo: {
+      text: '[VALIDADE]',
+      fontSize: 18,
+      fill: '#ffffff',
+      fontWeight: '600',
+      fontFamily: 'Segoe UI, Arial, sans-serif',
+      leftRatio: 0.08,
+      topRatio: 0.12,
+    },
+    texto_legal_rodape: {
+      text: '[RODAPE]',
+      fontSize: 14,
+      fill: '#ffffff',
+      fontWeight: '400',
+      fontFamily: 'Segoe UI, Arial, sans-serif',
+      leftRatio: 0.02,
+      topRatio: 0.95,
+    },
+  };
 
   const PROMO_TEXT_DEFAULTS = {
     titulo_linha1: {
@@ -206,7 +244,22 @@
   }
 
   function isDynamicText(obj) {
-    return obj?.isDynamicText === true;
+    return obj?.isDynamicText === true && !isCampanhaText(obj);
+  }
+
+  function isCampanhaText(obj) {
+    if (!obj) return false;
+    if (obj.isCampanhaText === true) return true;
+    const textType = obj.textType || '';
+    return textType in CAMPANHA_TEXT_DEFAULTS;
+  }
+
+  function campanhaTextLabel(textType) {
+    return ({
+      titulo_campanha: 'Campanha: Titulo',
+      validade_periodo: 'Campanha: Validade',
+      texto_legal_rodape: 'Campanha: Rodape',
+    })[textType] || 'Campanha';
   }
 
   function isTextObject(obj) {
@@ -343,6 +396,69 @@
     return PROMO_TEXT_DEFAULTS[textKey]?.fallback || '';
   }
 
+  function getCampanhaPreviewText(textKey, textType) {
+    if (textKey === 'titulo_linha1' || textKey === 'texto_legal') {
+      const val = getPromoTextValue(textKey);
+      if (val) return val;
+    }
+    return CAMPANHA_TEXT_DEFAULTS[textType]?.text || `[${textType}]`;
+  }
+
+  function createCampanhaTextObject(textKey) {
+    const cfgMap = CAMPANHA_TEXT_KEYS[textKey];
+    if (!cfgMap) return null;
+
+    const defaults = CAMPANHA_TEXT_DEFAULTS[cfgMap.textType];
+    const promoCfg = PROMO_TEXT_DEFAULTS[textKey] || null;
+    const cores = EDITOR_DATA.config?.cores || {};
+
+    return new fabric.IText(getCampanhaPreviewText(textKey, cfgMap.textType), {
+      name: cfgMap.name,
+      left: dims.width * DISPLAY_SCALE * (promoCfg?.leftRatio ?? defaults.leftRatio),
+      top: dims.height * DISPLAY_SCALE * (promoCfg?.topRatio ?? defaults.topRatio),
+      fontSize: (promoCfg?.fontSize ?? defaults.fontSize) * DISPLAY_SCALE,
+      fill: promoCfg?.fill ?? defaults.fill ?? cores.primary ?? '#ffffff',
+      fontWeight: promoCfg?.fontWeight ?? defaults.fontWeight ?? '700',
+      fontFamily: promoCfg?.fontFamily ?? defaults.fontFamily ?? 'Segoe UI, Arial, sans-serif',
+      isCampanhaText: true,
+      isDynamicText: true,
+      textType: cfgMap.textType,
+    });
+  }
+
+  function upgradeLegacyCampanhaObject(obj, textKey, cfgMap) {
+    if (!obj || !cfgMap) return;
+    if (!obj.isCampanhaText) {
+      obj.set({
+        isCampanhaText: true,
+        isDynamicText: true,
+        textType: cfgMap.textType,
+      });
+    }
+  }
+
+  function focusCampanhaText(textKey) {
+    const cfgMap = CAMPANHA_TEXT_KEYS[textKey];
+    if (!cfgMap) return;
+
+    let obj = findObjectByName(cfgMap.name);
+    if (!obj) {
+      obj = createCampanhaTextObject(textKey);
+      if (!obj) return;
+      canvas.add(obj);
+      enforceBackgroundOrder();
+    } else if (isTextObject(obj)) {
+      upgradeLegacyCampanhaObject(obj, textKey, cfgMap);
+      obj.set('text', getCampanhaPreviewText(textKey, cfgMap.textType));
+    }
+
+    canvas.setActiveObject(obj);
+    canvas.renderAll();
+    openPropsPanel(obj);
+    refreshLayersList();
+    showEditorAlert('Arraste o texto no canvas para posicionar. O conteudo real vem do Novo Encarte.', 'success');
+  }
+
   function createPromoTextObject(textKey) {
     const cfg = PROMO_TEXT_DEFAULTS[textKey];
     if (!cfg) return null;
@@ -362,6 +478,11 @@
   }
 
   function focusPromoText(textKey) {
+    if (CAMPANHA_TEXT_KEYS[textKey]) {
+      focusCampanhaText(textKey);
+      return;
+    }
+
     if (!PROMO_TEXT_DEFAULTS[textKey]) return;
 
     let obj = findObjectByName(textKey);
@@ -853,6 +974,61 @@
     const cardIndexEl = document.getElementById('prop-card-index');
     if (cardIndexEl) cardIndexEl.value = String(obj.productIndex ?? obj.zoneId ?? 1);
     syncingProps = false;
+    populateCardPartsList(obj);
+    updateCardEditModeUi();
+  }
+
+  function getCardPartLabel(child) {
+    const part = child?.cardPart || child?.textType || '';
+    return ({
+      foto: 'Foto',
+      nome_produto: 'Nome do produto',
+      preco_normal: 'Preco normal',
+      preco_promo: 'Preco promo',
+      unidade: 'Unidade',
+      label: 'Rotulo',
+    })[part] || child?.text || part || 'Elemento';
+  }
+
+  function populateCardPartsList(card) {
+    const list = document.getElementById('props-card-parts');
+    if (!list) return;
+    list.innerHTML = '';
+    if (!card || !isProductCard(card) || typeof card.getObjects !== 'function') return;
+
+    card.getObjects().forEach((child) => {
+      if (child.evented === false && child.selectable === false && child.cardPart === 'label') {
+        return;
+      }
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'props-card-part-btn';
+      btn.textContent = getCardPartLabel(child);
+      btn.addEventListener('click', () => enterCardEditMode(card, child));
+      list.appendChild(btn);
+    });
+  }
+
+  function updateCardEditModeUi() {
+    const editing = !!(cardEditMode && editingCardProductIndex);
+    const banner = document.getElementById('props-card-edit-banner');
+    const bannerComum = document.getElementById('props-card-edit-banner-comum');
+    const idxEl = document.getElementById('props-card-edit-index');
+    const idxElComum = document.getElementById('props-card-edit-index-comum');
+    const btnEdit = document.getElementById('btn-editar-elementos-card');
+    const btnConclude = document.getElementById('btn-concluir-edicao-card');
+    const btnConcludeTab = document.getElementById('btn-concluir-edicao-bloco');
+    const btnConcludeComum = document.getElementById('btn-concluir-edicao-comum');
+
+    if (banner) banner.classList.toggle('hidden', !editing);
+    if (bannerComum) bannerComum.classList.toggle('hidden', !editing);
+    if (idxEl && editing) idxEl.textContent = String(editingCardProductIndex);
+    if (idxElComum && editing) idxElComum.textContent = String(editingCardProductIndex);
+    if (btnEdit) btnEdit.classList.toggle('hidden', editing);
+    if (btnConclude) btnConclude.classList.toggle('hidden', !editing);
+    if (btnConcludeTab) btnConcludeTab.classList.toggle('hidden', !editing);
+    if (btnConcludeComum) btnConcludeComum.classList.toggle('hidden', !editing);
+    document.body.classList.toggle('is-card-edit-mode', editing);
   }
 
   function updateCardProductIndex(card, index) {
@@ -882,6 +1058,23 @@
 
   function populateDynamicTextProps(obj) {
     syncingProps = true;
+    const linkedSection = document.getElementById('props-texto-dinamico');
+    const linkedWrap = document.getElementById('prop-linked-zone')?.closest('.props-field');
+    const badge = linkedSection?.querySelector('.dynamic-text-badge');
+    const titleEl = linkedSection?.querySelector('.editor-section-title--spaced');
+
+    if (isCampanhaText(obj)) {
+      if (linkedWrap) linkedWrap.style.display = 'none';
+      if (badge) badge.textContent = campanhaTextLabel(obj.textType);
+      if (titleEl) titleEl.textContent = 'Zona da campanha';
+      syncingProps = false;
+      return;
+    }
+
+    if (linkedWrap) linkedWrap.style.display = '';
+    if (badge) badge.textContent = 'Texto Dinamico';
+    if (titleEl) titleEl.textContent = 'Vinculo de Produto';
+
     const linkedEl = document.getElementById('prop-linked-zone');
     if (linkedEl) linkedEl.value = String(obj.linkedZone ?? 1);
     syncingProps = false;
@@ -959,7 +1152,17 @@
 
     propsComum?.classList.remove('hidden');
 
-    if (isDynamicText(obj)) {
+    if (isCampanhaText(obj)) {
+      propsTexto?.classList.remove('hidden');
+      propsTextoDinamico?.classList.remove('hidden');
+      populateTextProps(obj);
+      populateDynamicTextProps(obj);
+      updateLockButtonState(obj);
+      setPropsPanelDisabled(isObjectLocked(obj));
+      return;
+    }
+
+    if (obj?.isDynamicText === true) {
       propsTexto?.classList.remove('hidden');
       propsTextoDinamico?.classList.remove('hidden');
       populateTextProps(obj);
@@ -1167,6 +1370,12 @@
 
   function bindKeyboardDelete() {
     document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && cardEditMode) {
+        e.preventDefault();
+        concludeCardEditMode();
+        return;
+      }
+
       if (e.key === 'Escape' && palcoEditMode) {
         e.preventDefault();
         exitPalcoEditMode();
@@ -1390,7 +1599,7 @@
     if (stillHasBlock) return;
 
     canvas.getObjects()
-      .filter((obj) => obj.isDynamicText && Number(obj.linkedZone || 0) === idx)
+      .filter((obj) => obj.isDynamicText && !isCampanhaText(obj) && Number(obj.linkedZone || 0) === idx)
       .forEach((obj) => canvas.remove(obj));
   }
 
@@ -1414,12 +1623,16 @@
     const index = parseInt(String(productIndex), 10);
     if (!index || !canvas) return [];
 
-    return canvas.getObjects().filter((obj) => {
-      if (isProductCard(obj)) return false;
-      if (obj.isProductZone && !obj.isProductCard && obj.zoneId === index) return true;
-      if (obj.isDynamicText && obj.linkedZone === index) return true;
-      return false;
-    });
+    return canvas.getObjects().filter((obj) => objectBelongsToProductIndex(obj, index));
+  }
+
+  function objectBelongsToProductIndex(obj, index) {
+    if (!obj || isProductCard(obj)) return false;
+    const idx = Number(index);
+    if (obj.isProductZone && !obj.isProductCard && Number(obj.zoneId || 0) === idx) return true;
+    if (obj.isDynamicText && !isCampanhaText(obj) && Number(obj.linkedZone || 0) === idx) return true;
+    if (obj.cardPart && (Number(obj.linkedZone || 0) === idx || Number(obj.zoneId || 0) === idx)) return true;
+    return false;
   }
 
   function finalizeProductCardGroup(group, productIndex) {
@@ -1494,11 +1707,208 @@
 
     const group = active.toGroup();
     finalizeProductCardGroup(group, productIndex);
+    if (cardEditMode && Number(editingCardProductIndex) === Number(productIndex)) {
+      cardEditMode = false;
+      editingCardProductIndex = null;
+      updateCardEditModeUi();
+    }
     canvas.setActiveObject(group);
     canvas.renderAll();
     openPropsPanel(group);
     refreshLayersList();
     showEditorAlert(`Bloco do produto ${productIndex} agrupado. Agora voce pode mover tudo junto.`, 'success');
+  }
+
+  function prepareLooseCardChildren(items, productIndex) {
+    (items || []).forEach((child) => {
+      if (!child) return;
+      if (child.isDynamicText) {
+        child.set({
+          linkedZone: productIndex,
+          cardPart: child.cardPart || child.textType || '',
+        });
+        return;
+      }
+      if (child.cardPart === 'foto' || (child.type === 'rect' && !child.isDynamicText)) {
+        child.set({
+          cardPart: 'foto',
+          zoneId: productIndex,
+        });
+        return;
+      }
+      if (child.cardPart === 'label') {
+        child.set({ zoneId: productIndex });
+        return;
+      }
+      if (child.isProductZone) {
+        child.set({ zoneId: productIndex });
+      }
+    });
+  }
+
+  function desagruparBlocoProduto(card, options = {}) {
+    const temporary = options.temporary === true;
+    const selectChild = options.selectChild || null;
+    const silent = options.silent === true;
+
+    if (!card || !isProductCard(card)) {
+      if (!silent) showEditorAlert('Selecione um card de produto agrupado.');
+      return null;
+    }
+    if (isObjectLocked(card)) {
+      if (!silent) showEditorAlert('Desbloqueie o card antes de desagrupar ou editar.');
+      return null;
+    }
+
+    const productIndex = Number(card.productIndex || card.zoneId || 0);
+    if (!productIndex) {
+      if (!silent) showEditorAlert('Card sem numero de produto.');
+      return null;
+    }
+
+    const preferred = selectChild && typeof card.getObjects === 'function' && card.getObjects().includes(selectChild)
+      ? selectChild
+      : null;
+
+    const selection = card.toActiveSelection();
+    const items = selection?.getObjects?.() ? selection.getObjects().slice() : [];
+    prepareLooseCardChildren(items, productIndex);
+
+    if (temporary) {
+      cardEditMode = true;
+      editingCardProductIndex = productIndex;
+    } else {
+      cardEditMode = false;
+      editingCardProductIndex = null;
+    }
+    updateCardEditModeUi();
+
+    if (preferred) {
+      canvas.setActiveObject(preferred);
+      openPropsPanel(preferred);
+    } else {
+      const firstText = items.find((o) => isDynamicText(o) || isTextObject(o));
+      if (temporary && firstText) {
+        canvas.setActiveObject(firstText);
+        openPropsPanel(firstText);
+      } else if (selection) {
+        canvas.setActiveObject(selection);
+        openPropsPanel(firstText || items[0] || null);
+      }
+    }
+
+    canvas.renderAll();
+    refreshLayersList();
+    markEditorDirty();
+
+    if (!silent) {
+      if (temporary) {
+        showEditorAlert(
+          `Editando elementos do produto ${productIndex}. Use Concluir edicao ou Esc para reagrupar.`,
+          'success'
+        );
+      } else {
+        showEditorAlert(
+          `Bloco do produto ${productIndex} desagrupado. Edite os elementos e use Agrupar quando terminar.`,
+          'success'
+        );
+      }
+    }
+
+    return { productIndex, items };
+  }
+
+  function desagruparBlocoSelecionado() {
+    if (cardEditMode && editingCardProductIndex) {
+      cardEditMode = false;
+      editingCardProductIndex = null;
+      updateCardEditModeUi();
+      showEditorAlert('Modo edicao encerrado sem reagrupar. Use Agrupar quando quiser.', 'success');
+      refreshLayersList();
+      return;
+    }
+
+    const active = getActiveTarget() || canvas?.getActiveObject();
+    const card = isProductCard(active) ? active : getProductCardRoot(active);
+    desagruparBlocoProduto(card, { temporary: false });
+  }
+
+  function enterCardEditMode(card, selectChild = null) {
+    if (!card || !isProductCard(card)) {
+      showEditorAlert('Selecione um card de produto agrupado.');
+      return;
+    }
+
+    if (cardEditMode && Number(editingCardProductIndex) === Number(card.productIndex || card.zoneId)) {
+      if (selectChild) {
+        canvas.setActiveObject(selectChild);
+        openPropsPanel(selectChild);
+        canvas.renderAll();
+        refreshLayersList();
+      }
+      return;
+    }
+
+    if (cardEditMode && editingCardProductIndex) {
+      reagruparAposEdicao(editingCardProductIndex, { silent: true });
+    }
+
+    desagruparBlocoProduto(card, { temporary: true, selectChild });
+  }
+
+  function reagruparAposEdicao(productIndex, options = {}) {
+    const silent = options.silent === true;
+    const index = Number(productIndex || 0);
+    if (!index || !canvas) {
+      cardEditMode = false;
+      editingCardProductIndex = null;
+      updateCardEditModeUi();
+      return null;
+    }
+
+    const objects = collectLooseBlockObjects(index);
+    if (objects.length < 2) {
+      cardEditMode = false;
+      editingCardProductIndex = null;
+      updateCardEditModeUi();
+      if (!silent) {
+        showEditorAlert('Nao ha elementos suficientes para reagrupar este produto.');
+      }
+      return null;
+    }
+
+    prepareLooseCardChildren(objects, index);
+    canvas.discardActiveObject();
+    const selection = new fabric.ActiveSelection(objects, { canvas });
+    canvas.setActiveObject(selection);
+    const group = selection.toGroup();
+    finalizeProductCardGroup(group, index);
+
+    cardEditMode = false;
+    editingCardProductIndex = null;
+    updateCardEditModeUi();
+
+    canvas.setActiveObject(group);
+    canvas.renderAll();
+    openPropsPanel(group);
+    refreshLayersList();
+    markEditorDirty();
+
+    if (!silent) {
+      showEditorAlert(`Edicao do produto ${index} concluida. Bloco reagrupado.`, 'success');
+    }
+    return group;
+  }
+
+  function concludeCardEditMode(options = {}) {
+    if (!cardEditMode || !editingCardProductIndex) return null;
+    return reagruparAposEdicao(editingCardProductIndex, options);
+  }
+
+  function editarElementosCardSelecionado() {
+    const active = getActiveTarget() || canvas?.getActiveObject();
+    const card = isProductCard(active) ? active : getProductCardRoot(active);
+    enterCardEditMode(card);
   }
 
   function duplicateLooseProductBlock(sourceIndex) {
@@ -1779,7 +2189,13 @@
     document.getElementById('btn-add-zona')?.addEventListener('click', addProductZone);
     document.getElementById('btn-duplicar-bloco')?.addEventListener('click', duplicarBlocoProduto);
     document.getElementById('btn-agrupar-bloco')?.addEventListener('click', agruparSelecaoComoBloco);
+    document.getElementById('btn-desagrupar-bloco')?.addEventListener('click', desagruparBlocoSelecionado);
+    document.getElementById('btn-concluir-edicao-bloco')?.addEventListener('click', () => concludeCardEditMode());
     document.getElementById('btn-duplicar-card')?.addEventListener('click', duplicarBlocoProduto);
+    document.getElementById('btn-desagrupar-card')?.addEventListener('click', desagruparBlocoSelecionado);
+    document.getElementById('btn-editar-elementos-card')?.addEventListener('click', editarElementosCardSelecionado);
+    document.getElementById('btn-concluir-edicao-card')?.addEventListener('click', () => concludeCardEditMode());
+    document.getElementById('btn-concluir-edicao-comum')?.addEventListener('click', () => concludeCardEditMode());
 
     document.querySelectorAll('.var-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -2008,8 +2424,8 @@
       markEditorDirty();
       if (propsObj && getActiveTarget() === propsObj) {
         if (isPalcoObject(propsObj)) populatePalcoProps(propsObj);
-        if (isTextObject(propsObj) || isDynamicText(propsObj)) populateTextProps(propsObj);
-        if (isDynamicText(propsObj)) populateDynamicTextProps(propsObj);
+        if (isTextObject(propsObj) || isDynamicText(propsObj) || isCampanhaText(propsObj)) populateTextProps(propsObj);
+        if (isDynamicText(propsObj) || isCampanhaText(propsObj)) populateDynamicTextProps(propsObj);
         if (isProductZone(propsObj)) populateZoneProps(propsObj);
         if (isImageObject(propsObj) && !isPalcoObject(propsObj)) populateImageProps(propsObj);
         if (isVectorObject(propsObj)) populateVectorProps(propsObj);
@@ -2021,6 +2437,15 @@
       if (isPalcoObject(target)) {
         if (palcoEditMode) exitPalcoEditMode();
         else enterPalcoEditMode();
+        return;
+      }
+
+      const card = isProductCard(target) ? target : getProductCardRoot(target);
+      if (card && isProductCard(card)) {
+        const sub = Array.isArray(opt.subTargets) && opt.subTargets.length
+          ? opt.subTargets[opt.subTargets.length - 1]
+          : null;
+        enterCardEditMode(card, sub || null);
       }
     });
   }
@@ -2316,6 +2741,9 @@
 
     tabs.forEach((tab) => {
       tab.addEventListener('click', () => {
+        if (cardEditMode) {
+          concludeCardEditMode({ silent: true });
+        }
         const target = tab.dataset.tab;
         tabs.forEach((t) => {
           t.classList.toggle('is-active', t === tab);
@@ -2340,26 +2768,55 @@
     const objects = canvas.getObjects().filter((obj) => obj.name !== 'fundo-editor');
     const active = getActiveTarget();
 
-    [...objects].reverse().forEach((obj, index) => {
+    const appendLayerItem = (obj, label, opts = {}) => {
       const li = document.createElement('li');
-      let label = obj.name || obj.type || `Objeto ${index + 1}`;
-      if (isProductZone(obj)) {
-        label = `Zona de Produto ${obj.zoneId || ''}`.trim();
-      } else if (isDynamicText(obj)) {
-        label = obj.text || `[${obj.textType || 'var'}]`;
-      }
-      li.className = 'editor-layer-item' + (active === obj ? ' is-active' : '');
-      if (isObjectLocked(obj)) {
-        label = '🔒 ' + label;
-      }
-      li.textContent = label;
-      li.addEventListener('click', () => {
+      li.className = 'editor-layer-item'
+        + (opts.child ? ' editor-layer-item--child' : '')
+        + (active === obj ? ' is-active' : '');
+      let text = label;
+      if (isObjectLocked(obj)) text = '🔒 ' + text;
+      li.textContent = text;
+      li.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (opts.onClick) {
+          opts.onClick();
+          return;
+        }
         canvas.setActiveObject(obj);
         canvas.renderAll();
         openPropsPanel(obj);
         refreshLayersList();
       });
       list.appendChild(li);
+    };
+
+    [...objects].reverse().forEach((obj, index) => {
+      let label = obj.name || obj.type || `Objeto ${index + 1}`;
+      if (isProductCard(obj)) {
+        label = `Card produto ${obj.productIndex || obj.zoneId || ''}`.trim();
+      } else if (isProductZone(obj)) {
+        label = `Zona de Produto ${obj.zoneId || ''}`.trim();
+      } else if (isCampanhaText(obj)) {
+        label = campanhaTextLabel(obj.textType);
+      } else if (obj.isDynamicText) {
+        label = obj.text || `[${obj.textType || 'var'}]`;
+      } else if (obj.cardPart) {
+        label = getCardPartLabel(obj);
+      }
+
+      appendLayerItem(obj, label);
+
+      if (isProductCard(obj) && typeof obj.getObjects === 'function') {
+        obj.getObjects().forEach((child) => {
+          if (child.evented === false && child.selectable === false && child.cardPart === 'label') {
+            return;
+          }
+          appendLayerItem(child, getCardPartLabel(child), {
+            child: true,
+            onClick: () => enterCardEditMode(obj, child),
+          });
+        });
+      }
     });
   }
 
@@ -2573,6 +3030,9 @@
       let redirecting = false;
 
       try {
+        if (cardEditMode) {
+          concludeCardEditMode({ silent: true });
+        }
         fitFundoRectToCanvas();
         updatePalcoClipPaths();
         ensureCardPartsBeforeSave();
@@ -2648,6 +3108,9 @@
       showLoader('Gerando PNG...');
 
       try {
+        if (cardEditMode) {
+          concludeCardEditMode({ silent: true });
+        }
         await apiCall('modelo', 'gerar_preview', {
           method: 'POST',
           body: { id: EDITOR_DATA.modelo.id },

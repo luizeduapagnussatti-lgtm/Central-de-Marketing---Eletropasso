@@ -30,6 +30,7 @@ class ConfigService
             'gemini_api_key', 'gemini_model', 'hub_api_url', 'hub_api_token',
             'max_upload_size_mb', 'watermark_rodape', 'rembg_bin', 'rembg_model',
             'rembg_alpha_matting', 'rembg_post_process_mask', 'rembg_white_refine',
+            'rembg_max_edge',
         ];
 
         foreach ($dados as $chave => $valor) {

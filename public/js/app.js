@@ -14,6 +14,10 @@ async function apiCall(recurso, acao, options = {}) {
     headers: {},
   };
 
+  if (options.signal) {
+    fetchOpts.signal = options.signal;
+  }
+
   if (options.body) {
     fetchOpts.headers['Content-Type'] = 'application/json';
     fetchOpts.body = JSON.stringify(options.body);

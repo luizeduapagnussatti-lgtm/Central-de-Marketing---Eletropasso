@@ -1,6 +1,8 @@
 let encarteId = null;
 let itens = [];
 let dragSrcIndex = null;
+/** @type {Map<string, AbortController>} */
+const pendingFotoJobs = new Map();
 
 document.addEventListener('DOMContentLoaded', () => {
   encarteId = parseInt(document.getElementById('encarte-id')?.value || '0', 10) || null;
@@ -15,6 +17,7 @@ document.addEventListener('DOMContentLoaded', () => {
   } else {
     addItem();
   }
+  updateGerarButtonState();
 });
 
 async function carregarEncarte(id) {
@@ -30,6 +33,7 @@ async function carregarEncarte(id) {
     document.getElementById('texto-rodape').value = enc.texto_legal_rodape || '';
     itens = enc.itens || [];
     renderItens();
+    updateGerarButtonState();
   } catch (e) {
     showAlert(document.querySelector('.app-main'), e.message);
   }
@@ -61,8 +65,11 @@ function addItem(data = {}) {
 function removeItem(index) {
   const nome = itens[index]?.nome_comercial?.trim() || `produto ${index + 1}`;
   if (!confirm(`Excluir "${nome}" da lista?`)) return;
+  const original = itens[index]?.caminho_foto_original;
+  if (original) cancelFotoJob(original);
   itens.splice(index, 1);
   renderItens();
+  updateGerarButtonState();
 }
 
 function renderItens() {
@@ -82,10 +89,13 @@ function renderItens() {
         <div class="item-handle-col">
           <div class="item-drag" title="Arrastar para reordenar">&#9776;</div>
           <span class="item-index">${i + 1}</span>
-          <div class="item-foto-preview">
-            ${item.caminho_foto_limpa
-              ? `<img src="${escAttr(item.caminho_foto_limpa)}" alt="">`
+          <div class="item-foto-preview${item.processamento_imagem_status === 'processando' ? ' item-foto-preview--processing' : ''}">
+            ${item.caminho_foto_limpa || item.caminho_foto_original
+              ? `<img src="${escAttr(item.caminho_foto_limpa || item.caminho_foto_original)}" alt="">`
               : '<span style="font-size:10px;color:#9ca3af;text-align:center;padding:4px">Sem foto</span>'}
+            ${item.processamento_imagem_status === 'processando'
+              ? '<span class="item-foto-spinner" aria-hidden="true"></span>'
+              : ''}
           </div>
           ${renderFotoStatus(item, i)}
         </div>
@@ -172,6 +182,8 @@ function renderItens() {
   });
 
   bindPriceMasks(lista);
+  updateGerarButtonState();
+  updateFotosProgresso();
 }
 
 function formatPrecoDisplay(value) {
@@ -182,7 +194,13 @@ function formatPrecoDisplay(value) {
 
 function renderFotoStatus(item, index) {
   const status = item.processamento_imagem_status || 'pendente';
-  if (status === 'pendente' && !item.caminho_foto_limpa) return '';
+  if (status === 'pendente' && !item.caminho_foto_limpa && !item.caminho_foto_original) return '';
+
+  if (status === 'processando') {
+    return `<div class="foto-status foto-status--processando" data-foto-status="${index}">
+      <span class="foto-status-badge"><span class="spinner-inline spinner-inline--xs" aria-hidden="true"></span> Removendo fundo...</span>
+    </div>`;
+  }
 
   const cls = status === 'ok' ? 'foto-status--ok' : 'foto-status--erro';
   const label = status === 'ok' ? 'Fundo removido' : 'Fundo nao removido';
@@ -295,24 +313,152 @@ function flashHubStatus(index, message, type = 'success') {
 async function uploadFoto(index, input) {
   if (!input.files[0]) return;
 
+  const prevOriginal = itens[index]?.caminho_foto_original;
+  if (prevOriginal) cancelFotoJob(prevOriginal);
+
   const fd = new FormData();
   fd.append('foto', input.files[0]);
 
   try {
-    showLoader('Processando imagem...');
     const data = await apiCall('encarte', 'upload_foto', { formData: fd });
     itens[index].caminho_foto_original = data.caminho_foto_original;
-    itens[index].caminho_foto_limpa = data.caminho_foto_limpa;
-    itens[index].processamento_imagem_status = data.processamento_imagem_status;
-    itens[index].processamento_imagem_erro = data.processamento_imagem_erro || '';
+    itens[index].caminho_foto_limpa = data.caminho_foto_limpa || data.caminho_foto_original;
+    itens[index].processamento_imagem_status = 'processando';
+    itens[index].processamento_imagem_erro = '';
     renderItens();
-    if (data.processamento_imagem_status === 'erro') {
-      alert('Aviso: o fundo da imagem nao foi removido.\n\n' + (data.processamento_imagem_erro || 'Rembg indisponivel.'));
-    }
+    processarFundoAsync(data.caminho_foto_original);
   } catch (e) {
     alert('Upload: ' + e.message);
+    updateGerarButtonState();
   } finally {
-    hideLoader();
+    input.value = '';
+  }
+}
+
+function cancelFotoJob(caminhoOriginal) {
+  const key = String(caminhoOriginal || '');
+  if (!key || !pendingFotoJobs.has(key)) return;
+  try {
+    pendingFotoJobs.get(key).abort();
+  } catch (_) { /* ignore */ }
+  pendingFotoJobs.delete(key);
+}
+
+function countFotosProcessando() {
+  return itens.filter((i) => i.caminho_foto_original && i.processamento_imagem_status === 'processando').length;
+}
+
+function countFotosComArquivo() {
+  return itens.filter((i) => i.caminho_foto_original || i.caminho_foto_limpa).length;
+}
+
+function countFotosProntas() {
+  return itens.filter((i) => {
+    if (!i.caminho_foto_original && !i.caminho_foto_limpa) return false;
+    return i.processamento_imagem_status === 'ok' || i.processamento_imagem_status === 'erro';
+  }).length;
+}
+
+function updateFotosProgresso() {
+  let el = document.getElementById('fotos-processamento-status');
+  const actions = document.querySelector('.form-actions');
+  if (!el && actions) {
+    el = document.createElement('p');
+    el.id = 'fotos-processamento-status';
+    el.className = 'fotos-processamento-status';
+    el.setAttribute('role', 'status');
+    el.setAttribute('aria-live', 'polite');
+    actions.parentNode?.insertBefore(el, actions);
+  }
+  if (!el) return;
+
+  const total = countFotosComArquivo();
+  const processando = countFotosProcessando();
+  const prontas = countFotosProntas();
+
+  if (total === 0) {
+    el.hidden = true;
+    el.textContent = '';
+    return;
+  }
+
+  el.hidden = false;
+  if (processando > 0) {
+    el.className = 'fotos-processamento-status fotos-processamento-status--busy';
+    el.textContent = `Fotos: ${prontas} de ${total} prontas — removendo fundo em ${processando}...`;
+  } else {
+    el.className = 'fotos-processamento-status';
+    el.textContent = `Fotos: ${prontas} de ${total} prontas`;
+  }
+}
+
+function updateGerarButtonState() {
+  const btn = document.getElementById('btn-gerar');
+  if (!btn) return;
+  const processando = countFotosProcessando();
+  if (processando > 0) {
+    btn.disabled = true;
+    btn.dataset.labelDefault = btn.dataset.labelDefault || btn.textContent;
+    btn.textContent = 'Aguardando imagens...';
+  } else {
+    btn.disabled = false;
+    if (btn.dataset.labelDefault) {
+      btn.textContent = btn.dataset.labelDefault;
+    } else {
+      btn.textContent = 'Gerar Encarte PNG';
+    }
+  }
+  updateFotosProgresso();
+}
+
+async function processarFundoAsync(caminhoOriginal) {
+  const key = String(caminhoOriginal || '');
+  if (!key) return;
+
+  cancelFotoJob(key);
+  const controller = new AbortController();
+  pendingFotoJobs.set(key, controller);
+
+  try {
+    const data = await apiCall('encarte', 'processar_fundo', {
+      method: 'POST',
+      body: { caminho_foto_original: key },
+      signal: controller.signal,
+    });
+
+    const idx = itens.findIndex((i) => i.caminho_foto_original === key);
+    if (idx < 0) return;
+
+    itens[idx].caminho_foto_limpa = data.caminho_foto_limpa;
+    itens[idx].processamento_imagem_status = data.processamento_imagem_status;
+    itens[idx].processamento_imagem_erro = data.processamento_imagem_erro || '';
+    renderItens();
+
+    if (data.processamento_imagem_status === 'erro') {
+      flashHubStatus(
+        idx,
+        'Fundo nao removido — o encarte usara a foto original. Voce pode reprocessar.',
+        'error'
+      );
+    }
+  } catch (e) {
+    if (e?.name === 'AbortError' || String(e?.message || '').includes('aborted')) {
+      return;
+    }
+    const idx = itens.findIndex((i) => i.caminho_foto_original === key);
+    if (idx >= 0) {
+      itens[idx].processamento_imagem_status = 'erro';
+      itens[idx].processamento_imagem_erro = e.message || 'Falha ao processar fundo.';
+      if (!itens[idx].caminho_foto_limpa) {
+        itens[idx].caminho_foto_limpa = key;
+      }
+      renderItens();
+    }
+  } finally {
+    if (pendingFotoJobs.get(key) === controller) {
+      pendingFotoJobs.delete(key);
+    }
+    updateGerarButtonState();
   }
 }
 
@@ -323,21 +469,10 @@ async function reprocessarFundo(index) {
     return;
   }
 
-  try {
-    showLoader('Reprocessando fundo...');
-    const data = await apiCall('encarte', 'reprocessar_fundo', {
-      method: 'POST',
-      body: { caminho_foto_original: original },
-    });
-    itens[index].caminho_foto_limpa = data.caminho_foto_limpa;
-    itens[index].processamento_imagem_status = data.processamento_imagem_status;
-    itens[index].processamento_imagem_erro = data.processamento_imagem_erro || '';
-    renderItens();
-  } catch (e) {
-    alert('Reprocessar: ' + e.message);
-  } finally {
-    hideLoader();
-  }
+  itens[index].processamento_imagem_status = 'processando';
+  itens[index].processamento_imagem_erro = '';
+  renderItens();
+  processarFundoAsync(original);
 }
 
 async function gerarTitulosIa() {
@@ -383,6 +518,25 @@ function validarFormulario() {
 
 async function salvarEncarte(gerar = false) {
   if (!validarFormulario()) return;
+
+  if (gerar) {
+    const processando = countFotosProcessando();
+    if (processando > 0) {
+      alert(`Aguarde o fim da remocao de fundo (${processando} foto(s) ainda processando).`);
+      updateGerarButtonState();
+      return;
+    }
+
+    const comErro = itens.filter(
+      (i) => i.nome_comercial?.trim() && i.caminho_foto_original && i.processamento_imagem_status === 'erro'
+    );
+    if (comErro.length > 0) {
+      const ok = confirm(
+        `${comErro.length} foto(s) sem fundo removido. O encarte usara a imagem original nesses itens.\n\nDeseja continuar?`
+      );
+      if (!ok) return;
+    }
+  }
 
   const payload = {
     id: encarteId,
