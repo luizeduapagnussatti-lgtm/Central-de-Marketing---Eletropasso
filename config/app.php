@@ -335,8 +335,124 @@ function ep_match_static_placeholder_text(string $text): ?string
         '[PRECO_NORMAL]', '[PRECO_DE]' => 'preco_normal',
         '[PRECO_PROMO]', '[PRECO_POR]' => 'preco_promo',
         '[UNIDADE]' => 'unidade',
+        '[TITULO_CAMPANHA]' => 'titulo_campanha',
+        '[VALIDADE]' => 'validade_periodo',
+        '[RODAPE]' => 'texto_legal_rodape',
         default => null,
     };
+}
+
+function ep_is_campanha_text_type(string $textType): bool
+{
+    return in_array($textType, ['titulo_campanha', 'validade_periodo', 'texto_legal_rodape'], true);
+}
+
+function ep_campanha_text_type_from_name(string $name): ?string
+{
+    return match ($name) {
+        'titulo_linha1'    => 'titulo_campanha',
+        'validade_periodo' => 'validade_periodo',
+        'texto_legal'      => 'texto_legal_rodape',
+        default            => null,
+    };
+}
+
+function ep_format_validade_periodo(?string $inicio, ?string $fim): string
+{
+    $di = marketing_format_date_br($inicio);
+    $df = marketing_format_date_br($fim);
+
+    if ($di !== '' && $df !== '') {
+        return 'Valido de ' . $di . ' ate ' . $df;
+    }
+    if ($df !== '') {
+        return 'Valido ate ' . $df;
+    }
+    if ($di !== '') {
+        return 'Valido a partir de ' . $di;
+    }
+
+    return '';
+}
+
+function ep_get_campanha_text_value(string $textType, array $encarte_data, array $render_opts = []): string
+{
+    $encarte = $render_opts['encarte_data'] ?? $encarte_data;
+    if (!is_array($encarte)) {
+        $encarte = [];
+    }
+
+    return match ($textType) {
+        'titulo_campanha' => (static function () use ($encarte, $render_opts): string {
+            $titulo = trim((string) ($encarte['titulo_campanha'] ?? ''));
+            if ($titulo === '') {
+                $modeloConfig = is_array($render_opts['modelo_config'] ?? null) ? $render_opts['modelo_config'] : [];
+                $titulo = trim((string) ($modeloConfig['textos']['titulo_linha1'] ?? ''));
+            }
+
+            return htmlspecialchars($titulo, ENT_QUOTES, 'UTF-8');
+        })(),
+        'validade_periodo' => htmlspecialchars(
+            ep_format_validade_periodo(
+                isset($encarte['validade_inicio']) ? (string) $encarte['validade_inicio'] : null,
+                isset($encarte['validade_fim']) ? (string) $encarte['validade_fim'] : null
+            ),
+            ENT_QUOTES,
+            'UTF-8'
+        ),
+        'texto_legal_rodape' => htmlspecialchars(
+            trim((string) ($encarte['texto_legal_rodape'] ?? $render_opts['texto_legal_rodape'] ?? '')),
+            ENT_QUOTES,
+            'UTF-8'
+        ),
+        default => '',
+    };
+}
+
+/** Resolve conteudo de texto Fabric (campanha, produto ou estatico). */
+function ep_resolve_fabric_text_content(array $obj, array $itens, array $render_opts): string
+{
+    $name = (string) ($obj['name'] ?? '');
+
+    if (!empty($obj['isCampanhaText'])) {
+        $textType = (string) ($obj['textType'] ?? ep_campanha_text_type_from_name($name) ?? '');
+        if ($textType !== '' && ep_is_campanha_text_type($textType)) {
+            return ep_get_campanha_text_value($textType, [], $render_opts);
+        }
+    }
+
+    if (!empty($obj['isDynamicText'])) {
+        $textType = (string) ($obj['textType'] ?? '');
+        if (ep_is_campanha_text_type($textType)) {
+            return ep_get_campanha_text_value($textType, [], $render_opts);
+        }
+
+        $linkedZone = (int) ($obj['linkedZone'] ?? 1);
+
+        return ep_get_dynamic_text_value($textType, $linkedZone, $itens, $render_opts);
+    }
+
+    $rawText = (string) ($obj['text'] ?? '');
+    $textTypeStatic = ep_match_static_placeholder_text($rawText);
+    if ($textTypeStatic !== null) {
+        if (ep_is_campanha_text_type($textTypeStatic)) {
+            return ep_get_campanha_text_value($textTypeStatic, [], $render_opts);
+        }
+
+        $linkedZone = (int) ($obj['linkedZone'] ?? 1);
+
+        return ep_get_dynamic_text_value($textTypeStatic, $linkedZone, $itens, $render_opts);
+    }
+
+    $campanhaByName = ep_campanha_text_type_from_name($name);
+    if ($campanhaByName !== null) {
+        $resolved = ep_get_campanha_text_value($campanhaByName, [], $render_opts);
+        if ($resolved !== '') {
+            return $resolved;
+        }
+    }
+
+    return htmlspecialchars($rawText, ENT_QUOTES, 'UTF-8');
 }
 
 /**
@@ -788,23 +904,7 @@ function ep_render_fabric_object(array $obj, string $base_path, array $itens = [
     }
 
     if ($type === 'i-text' || $type === 'text' || $type === 'textbox') {
-        if (!empty($obj['isDynamicText'])) {
-            $textType = (string) ($obj['textType'] ?? '');
-            $linkedZone = (int) ($obj['linkedZone'] ?? 1);
-            $text = ep_get_dynamic_text_value($textType, $linkedZone, $itens, $render_opts);
-        } else {
-            $rawText = (string) ($obj['text'] ?? '');
-            $textTypeStatic = ep_match_static_placeholder_text($rawText);
-            if ($textTypeStatic !== null) {
-                $linkedZone = (int) ($obj['linkedZone'] ?? 1);
-                $text = ep_get_dynamic_text_value($textTypeStatic, $linkedZone, $itens, $render_opts);
-            } else {
-                $text = htmlspecialchars($rawText, ENT_QUOTES, 'UTF-8');
-                if ($name === 'texto_legal' && !empty($render_opts['texto_legal_rodape'])) {
-                    $text = htmlspecialchars((string) $render_opts['texto_legal_rodape'], ENT_QUOTES, 'UTF-8');
-                }
-            }
-        }
+        $text = ep_resolve_fabric_text_content($obj, $itens, $render_opts);
 
         $fill = htmlspecialchars((string) ($obj['fill'] ?? '#ffffff'), ENT_QUOTES, 'UTF-8');
         $scaleY = (float) ($obj['scaleY'] ?? 1);
@@ -825,9 +925,24 @@ function ep_render_fabric_object(array $obj, string $base_path, array $itens = [
         if (!empty($obj['isDynamicText']) && ($obj['textType'] ?? '') === 'preco_promo') {
             $class .= ' font-display preco-3d';
         }
+        if (!empty($obj['isCampanhaText']) && ($obj['textType'] ?? '') === 'titulo_campanha') {
+            $class .= ' font-display preco-3d';
+        }
+
+        $textTypeObj = (string) ($obj['textType'] ?? '');
+        $isValidade = $name === 'validade_periodo'
+            || $textTypeObj === 'validade_periodo'
+            || ep_campanha_text_type_from_name($name) === 'validade_periodo';
+
+        // Validade deve permanecer em uma unica linha (placeholder curto nao pode limitar a largura).
+        $whiteSpace = $isValidade ? 'nowrap' : 'pre-wrap';
+        if ($isValidade) {
+            $widthCss = '';
+        }
+        $textHtml = $isValidade ? $text : nl2br($text);
 
         return sprintf(
-            '<div class="%s" data-name="%s" style="%s%sfont-size:%spx;font-weight:%d;font-family:%s;color:%s;text-align:%s;white-space:pre-wrap;line-height:1.1;%s%s">%s</div>',
+            '<div class="%s" data-name="%s" style="%s%sfont-size:%spx;font-weight:%d;font-family:%s;color:%s;text-align:%s;white-space:%s;line-height:1.1;%s%s">%s</div>',
             $class,
             htmlspecialchars($name, ENT_QUOTES, 'UTF-8'),
             $baseStyle,
@@ -837,9 +952,10 @@ function ep_render_fabric_object(array $obj, string $base_path, array $itens = [
             $fontFamily,
             $fill,
             $textAlign,
+            $whiteSpace,
             $linethroughCss,
             $shadowCss,
-            nl2br($text)
+            $textHtml
         );
     }
 

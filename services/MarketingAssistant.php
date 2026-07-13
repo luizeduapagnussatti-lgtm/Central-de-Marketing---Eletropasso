@@ -29,6 +29,7 @@ TXT;
     private bool $rembgPostProcessMask;
     private bool $rembgWhiteRefine;
     private int $rembgWhiteTolerance;
+    private int $rembgMaxEdge;
     private int $timeout = 25;
 
     public function __construct()
@@ -36,11 +37,12 @@ TXT;
         $this->apiKey = marketing_config('gemini_api_key', marketing_env('GEMINI_API_KEY', '')) ?? '';
         $this->model = marketing_config('gemini_model', marketing_env('GEMINI_MODEL', 'gemini-2.5-flash')) ?? 'gemini-2.5-flash';
         $this->rembgBin = marketing_config('rembg_bin', marketing_env('REMBG_BIN', 'rembg')) ?? 'rembg';
-        $this->rembgModel = marketing_config('rembg_model', marketing_env('REMBG_MODEL', 'birefnet-general')) ?? 'birefnet-general';
-        $this->rembgAlphaMatting = marketing_config_bool('rembg_alpha_matting', marketing_env('REMBG_ALPHA_MATTING', '1'));
-        $this->rembgPostProcessMask = marketing_config_bool('rembg_post_process_mask', marketing_env('REMBG_POST_PROCESS_MASK', '1'));
+        $this->rembgModel = marketing_config('rembg_model', marketing_env('REMBG_MODEL', 'u2net')) ?? 'u2net';
+        $this->rembgAlphaMatting = marketing_config_bool('rembg_alpha_matting', marketing_env('REMBG_ALPHA_MATTING', '0'));
+        $this->rembgPostProcessMask = marketing_config_bool('rembg_post_process_mask', marketing_env('REMBG_POST_PROCESS_MASK', '0'));
         $this->rembgWhiteRefine = marketing_config_bool('rembg_white_refine', marketing_env('REMBG_WHITE_REFINE', '1'));
         $this->rembgWhiteTolerance = max(10, min(80, (int) (marketing_config('rembg_white_tolerance', marketing_env('REMBG_WHITE_TOLERANCE', '42')) ?? 42)));
+        $this->rembgMaxEdge = max(640, min(2048, (int) (marketing_config('rembg_max_edge', marketing_env('REMBG_MAX_EDGE', '1280')) ?? 1280)));
     }
 
     public function normalizarNome(string $nomeErp): string
@@ -141,25 +143,19 @@ TXT;
             $caminhoDestino = preg_replace('/\.[^.]+$/', '.png', $caminhoDestino) ?? $caminhoDestino . '.png';
         }
 
-        $modelos = $this->modelosRembgTentativa();
-        $resultado = null;
-        $modeloUsado = '';
+        $prep = $this->prepararImagemParaRembg($caminhoOriginal);
+        $caminhoEntrada = $prep['path'];
+        $tempCriado = $prep['temp'];
 
-        foreach ($modelos as $modelo) {
-            $cmd = $this->montarComandoRembg($caminhoOriginal, $caminhoDestino, $modelo);
-            $resultado = $this->executarComandoComTimeout($cmd, 120);
-            $modeloUsado = $modelo;
+        $modelo = $this->normalizarModeloRembg($this->rembgModel);
+        $cmd = $this->montarComandoRembg($caminhoEntrada, $caminhoDestino, $modelo);
+        $resultado = $this->executarComandoComTimeout($cmd, 120);
 
-            if ($resultado['ok'] && is_file($caminhoDestino)) {
-                break;
-            }
-
-            if (is_file($caminhoDestino)) {
-                @unlink($caminhoDestino);
-            }
+        if ($tempCriado && is_file($caminhoEntrada)) {
+            @unlink($caminhoEntrada);
         }
 
-        if ($resultado === null || !$resultado['ok'] || !is_file($caminhoDestino)) {
+        if (!$resultado['ok'] || !is_file($caminhoDestino)) {
             $msgSaida = trim((string) ($resultado['output'] ?? ''));
             $erro = $msgSaida !== ''
                 ? 'Rembg falhou: ' . $msgSaida
@@ -169,10 +165,15 @@ TXT;
                 $erro = 'Rembg excedeu o tempo limite (120s). Use imagens menores ou verifique a instalacao do rembg.';
             }
 
+            if (is_file($caminhoDestino)) {
+                @unlink($caminhoDestino);
+            }
+
             LoggerService::warning('Rembg falhou', [
                 'exit_code' => $resultado['exit_code'] ?? -1,
                 'timed_out' => $resultado['timed_out'] ?? false,
-                'modelo'    => $modeloUsado,
+                'modelo'    => $modelo,
+                'max_edge'  => $this->rembgMaxEdge,
                 'cmd'       => $this->rembgBin . ' i -m [model] [input] [output]',
                 'output'    => $msgSaida,
             ]);
@@ -185,25 +186,73 @@ TXT;
         }
 
         LoggerService::info('Rembg OK', [
-            'destino' => $caminhoDestino,
-            'modelo'  => $modeloUsado,
-            'refine'  => $this->rembgWhiteRefine,
+            'destino'  => $caminhoDestino,
+            'modelo'   => $modelo,
+            'max_edge' => $this->rembgMaxEdge,
+            'refine'   => $this->rembgWhiteRefine,
+            'resized'  => $tempCriado,
         ]);
 
         return ['ok' => true, 'erro' => null];
     }
 
-    /** @return list<string> */
-    private function modelosRembgTentativa(): array
+    /**
+     * Redimensiona a imagem se o lado maior passar de rembg_max_edge (acelera o ONNX).
+     *
+     * @return array{path: string, temp: bool}
+     */
+    private function prepararImagemParaRembg(string $caminhoOriginal): array
     {
-        $principal = $this->normalizarModeloRembg($this->rembgModel);
-        $fallback = 'u2net';
-
-        if ($principal === $fallback) {
-            return [$fallback];
+        $src = $this->carregarImagemGd($caminhoOriginal);
+        if ($src === false) {
+            return ['path' => $caminhoOriginal, 'temp' => false];
         }
 
-        return [$principal, $fallback];
+        $w = imagesx($src);
+        $h = imagesy($src);
+        $maxEdge = $this->rembgMaxEdge;
+
+        if ($w <= $maxEdge && $h <= $maxEdge) {
+            imagedestroy($src);
+
+            return ['path' => $caminhoOriginal, 'temp' => false];
+        }
+
+        $scale = min($maxEdge / max(1, $w), $maxEdge / max(1, $h));
+        $nw = max(1, (int) round($w * $scale));
+        $nh = max(1, (int) round($h * $scale));
+
+        $dst = imagecreatetruecolor($nw, $nh);
+        if ($dst === false) {
+            imagedestroy($src);
+
+            return ['path' => $caminhoOriginal, 'temp' => false];
+        }
+
+        imagealphablending($dst, false);
+        imagesavealpha($dst, true);
+        $transparent = imagecolorallocatealpha($dst, 0, 0, 0, 127);
+        imagefilledrectangle($dst, 0, 0, $nw, $nh, $transparent);
+        imagealphablending($dst, true);
+        imagecopyresampled($dst, $src, 0, 0, 0, 0, $nw, $nh, $w, $h);
+        imagealphablending($dst, false);
+        imagesavealpha($dst, true);
+        imagedestroy($src);
+
+        $tempDir = marketing_path('assets/produtos/limpas/_tmp');
+        if (!is_dir($tempDir)) {
+            mkdir($tempDir, 0755, true);
+        }
+
+        $tempPath = $tempDir . '/rembg_in_' . bin2hex(random_bytes(6)) . '.png';
+        $ok = imagepng($dst, $tempPath, 6);
+        imagedestroy($dst);
+
+        if (!$ok || !is_file($tempPath)) {
+            return ['path' => $caminhoOriginal, 'temp' => false];
+        }
+
+        return ['path' => $tempPath, 'temp' => true];
     }
 
     private function normalizarModeloRembg(string $modelo): string
@@ -219,7 +268,7 @@ TXT;
             'silueta',
         ];
 
-        return in_array($modelo, $permitidos, true) ? $modelo : 'birefnet-general';
+        return in_array($modelo, $permitidos, true) ? $modelo : 'u2net';
     }
 
     private function montarComandoRembg(string $caminhoOriginal, string $caminhoDestino, string $modelo): string

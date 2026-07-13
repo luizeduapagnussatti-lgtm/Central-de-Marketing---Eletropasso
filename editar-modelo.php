@@ -49,8 +49,13 @@ $coresLabels = [
     'badge_texto'  => 'Texto do badge',
 ];
 
-$textosEditor = [
-    'titulo_linha1'   => ['label' => 'Titulo linha 1', 'id' => 'texto-titulo-linha1'],
+$textosCampanha = [
+    'titulo_linha1' => ['label' => 'Titulo da campanha', 'id' => 'texto-titulo-linha1'],
+    'validade_periodo' => ['label' => 'Periodo de validade', 'id' => 'texto-validade-periodo', 'preview_only' => true],
+    'texto_legal' => ['label' => 'Texto legal (rodape)', 'id' => 'texto-texto-legal'],
+];
+
+$textosFixosModelo = [
     'titulo_linha2'   => ['label' => 'Titulo linha 2', 'id' => 'texto-titulo-linha2'],
     'badge_oferta'    => ['label' => 'Badge oferta', 'id' => 'texto-badge-oferta'],
     'faixa_oferta'    => ['label' => 'Faixa oferta', 'id' => 'texto-faixa-oferta'],
@@ -58,7 +63,6 @@ $textosEditor = [
     'footer_endereco' => ['label' => 'Endereco', 'id' => 'texto-footer-endereco'],
     'footer_cidade'   => ['label' => 'Cidade', 'id' => 'texto-footer-cidade'],
     'footer_whatsapp' => ['label' => 'WhatsApp', 'id' => 'texto-footer-whatsapp'],
-    'texto_legal'     => ['label' => 'Texto Legal (Rodape)', 'id' => 'texto-texto-legal'],
 ];
 ?>
 <!DOCTYPE html>
@@ -201,14 +205,44 @@ tailwind.config = {
 
       <section id="tab-textos" class="editor-tab-panel hidden" role="tabpanel" hidden>
         <div class="editor-section">
-          <h4 class="editor-section-title">Textos promocionais</h4>
-          <p class="editor-section-desc">Edite o conteudo e use <strong>Posicionar no canvas</strong> para arrastar titulos e badge no encarte.</p>
-          <?php foreach ($textosEditor as $chave => $meta):
-              if (!array_key_exists($chave, $config['textos'] ?? []) && !in_array($chave, ['titulo_linha1', 'titulo_linha2', 'badge_oferta', 'texto_legal'], true)) {
+          <h4 class="editor-section-title">Zonas da campanha</h4>
+          <p class="editor-section-desc">Conteudo real vem da tela <strong>Novo Encarte</strong>; aqui voce define posicao e estilo no layout.</p>
+          <?php foreach ($textosCampanha as $chave => $meta):
+              $previewOnly = !empty($meta['preview_only']);
+              $valor = $previewOnly
+                  ? 'Valido de 01/07/2026 ate 31/07/2026'
+                  : htmlspecialchars((string) ($config['textos'][$chave] ?? ''), ENT_QUOTES, 'UTF-8');
+          ?>
+          <div class="editor-text-field">
+            <label for="<?= $meta['id'] ?>" class="editor-field-label"><?= $meta['label'] ?></label>
+            <input
+              type="text"
+              id="<?= $meta['id'] ?>"
+              class="editor-text-input"
+              <?php if (!$previewOnly): ?>data-texto="<?= $chave ?>"<?php endif; ?>
+              value="<?= $valor ?>"
+              <?= $previewOnly ? 'readonly aria-readonly="true"' : '' ?>
+              <?= $previewOnly ? 'title="Exemplo de preview no editor. Datas reais vem do Novo Encarte."' : '' ?>
+            >
+            <button
+              type="button"
+              class="editor-btn editor-btn--secondary editor-btn--sm editor-text-pos-btn"
+              data-posicionar-texto="<?= $chave ?>"
+            >
+              Posicionar no canvas
+            </button>
+          </div>
+          <?php endforeach; ?>
+        </div>
+        <div class="editor-section editor-section--bordered">
+          <h4 class="editor-section-title">Textos fixos do modelo</h4>
+          <p class="editor-section-desc">Opcionais — permanecem iguais em todos os encartes deste modelo.</p>
+          <?php foreach ($textosFixosModelo as $chave => $meta):
+              if (!array_key_exists($chave, $config['textos'] ?? []) && !in_array($chave, ['titulo_linha2', 'badge_oferta'], true)) {
                   continue;
               }
               $valor = htmlspecialchars((string) ($config['textos'][$chave] ?? ''), ENT_QUOTES, 'UTF-8');
-              $posicionavel = in_array($chave, ['titulo_linha1', 'titulo_linha2', 'badge_oferta', 'texto_legal'], true);
+              $posicionavel = in_array($chave, ['titulo_linha2', 'badge_oferta'], true);
           ?>
           <div class="editor-text-field">
             <label for="<?= $meta['id'] ?>" class="editor-field-label"><?= $meta['label'] ?></label>
@@ -246,7 +280,13 @@ tailwind.config = {
           <button type="button" id="btn-agrupar-bloco" class="editor-btn editor-btn--secondary editor-btn--block">
             Agrupar selecao como bloco
           </button>
-          <p class="editor-section-desc editor-section-desc--hint">Dica: Shift+clique para selecionar foto + textos do mesmo produto. Depois use <strong>Agrupar</strong> (move junto) ou <strong>Duplicar</strong> (copia tudo para o proximo produto).</p>
+          <button type="button" id="btn-desagrupar-bloco" class="editor-btn editor-btn--secondary editor-btn--block">
+            Desagrupar bloco selecionado
+          </button>
+          <button type="button" id="btn-concluir-edicao-bloco" class="editor-btn editor-btn--primary editor-btn--block hidden">
+            Concluir edicao do bloco
+          </button>
+          <p class="editor-section-desc editor-section-desc--hint">Dica: duplo clique no card ou <strong>Editar elementos</strong> para ajustar cor/fonte. Use <strong>Desagrupar</strong> para soltar o bloco, ou <strong>Agrupar</strong> / <strong>Concluir</strong> para mover tudo junto de novo.</p>
         </div>
         <div class="editor-section editor-section--bordered">
           <h4 class="editor-section-title">Zona legada (somente foto)</h4>
@@ -365,6 +405,9 @@ tailwind.config = {
 
       <section id="props-card" class="props-section hidden">
         <div class="zone-badge">Card de Produto</div>
+        <div id="props-card-edit-banner" class="props-card-edit-banner hidden" role="status">
+          Editando elementos do produto <span id="props-card-edit-index">N</span>
+        </div>
         <p class="props-zone-info">
           Este card sera preenchido automaticamente com foto, nome, precos e unidade
           do produto correspondente na geracao do encarte.
@@ -373,6 +416,19 @@ tailwind.config = {
           <label for="prop-card-index" class="editor-field-label">Produto N.</label>
           <input type="number" id="prop-card-index" min="1" max="24" class="editor-text-input" readonly>
         </div>
+        <div class="props-field">
+          <span class="editor-field-label">Elementos do card</span>
+          <div id="props-card-parts" class="props-card-parts" aria-label="Partes do card de produto"></div>
+        </div>
+        <button type="button" id="btn-editar-elementos-card" class="editor-btn editor-btn--secondary editor-btn--block">
+          Editar elementos
+        </button>
+        <button type="button" id="btn-concluir-edicao-card" class="editor-btn editor-btn--primary editor-btn--block hidden">
+          Concluir edicao
+        </button>
+        <button type="button" id="btn-desagrupar-card" class="editor-btn editor-btn--secondary editor-btn--block">
+          Desagrupar bloco
+        </button>
         <button type="button" id="btn-duplicar-card" class="editor-btn editor-btn--primary editor-btn--block">
           Duplicar bloco inteiro
         </button>
@@ -433,6 +489,12 @@ tailwind.config = {
       </section>
 
       <section id="props-comum" class="props-section hidden">
+        <div id="props-card-edit-banner-comum" class="props-card-edit-banner hidden" role="status">
+          Editando produto <span id="props-card-edit-index-comum">N</span> — ajuste cor/fonte e conclua.
+        </div>
+        <button type="button" id="btn-concluir-edicao-comum" class="editor-btn editor-btn--primary editor-btn--block hidden">
+          Concluir edicao do bloco
+        </button>
         <h4 class="editor-section-title">Elemento</h4>
         <button type="button" id="prop-duplicar-comum" class="editor-btn editor-btn--secondary editor-btn--block">Duplicar</button>
         <button type="button" id="prop-bloquear" class="editor-btn editor-btn--secondary editor-btn--block">Bloquear elemento</button>

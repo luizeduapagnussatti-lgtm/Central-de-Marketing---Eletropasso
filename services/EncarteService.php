@@ -130,6 +130,10 @@ class EncarteService
             if (empty($item['nome_comercial'])) {
                 continue;
             }
+            $statusImg = (string) ($item['processamento_imagem_status'] ?? 'pendente');
+            if (!in_array($statusImg, ['pendente', 'ok', 'erro'], true)) {
+                $statusImg = 'pendente';
+            }
             $st->execute([
                 $encarteId,
                 $ordem++,
@@ -142,7 +146,7 @@ class EncarteService
                 $item['unidade'] ?? 'und',
                 $item['caminho_foto_original'] ?? null,
                 $item['caminho_foto_limpa'] ?? '',
-                $item['processamento_imagem_status'] ?? 'pendente',
+                $statusImg,
             ]);
         }
 

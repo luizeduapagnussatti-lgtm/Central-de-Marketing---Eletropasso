@@ -888,6 +888,28 @@ a:hover { color: var(--ep-dark); }
   object-fit: contain;
 }
 
+.item-foto-preview--processing {
+  position: relative;
+}
+
+.item-foto-preview--processing img {
+  opacity: 0.55;
+}
+
+.item-foto-spinner {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  border: 2px solid rgba(185, 28, 28, 0.25);
+  border-top-color: #b91c1c;
+  border-radius: 50%;
+  animation: foto-spin 0.7s linear infinite;
+}
+
+@keyframes foto-spin {
+  to { transform: rotate(360deg); }
+}
+
 .foto-status {
   display: flex;
   flex-direction: column;
@@ -904,6 +926,10 @@ a:hover { color: var(--ep-dark); }
   padding: 2px 4px;
   border-radius: 4px;
   text-align: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
 }
 
 .foto-status--ok .foto-status-badge {
@@ -914,6 +940,23 @@ a:hover { color: var(--ep-dark); }
 .foto-status--erro .foto-status-badge {
   background: #fee2e2;
   color: #991b1b;
+}
+
+.foto-status--processando .foto-status-badge {
+  background: #fef3c7;
+  color: #92400e;
+  text-transform: none;
+}
+
+.fotos-processamento-status {
+  margin: 0 0 0.75rem;
+  font-size: 0.8125rem;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.fotos-processamento-status--busy {
+  color: #b45309;
 }
 
 .foto-status-erro-msg {

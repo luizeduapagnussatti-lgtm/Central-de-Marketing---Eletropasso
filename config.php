@@ -218,16 +218,22 @@ $nav_active = 'config';
 
               <label for="cfg-rembg-model">Modelo Rembg (produtos)</label>
               <select name="rembg_model" id="cfg-rembg-model">
-                <option value="birefnet-general">birefnet-general (recomendado)</option>
+                <option value="u2net">u2net (rapido — recomendado)</option>
+                <option value="birefnet-general-lite">birefnet-general-lite (equilibrio)</option>
+                <option value="birefnet-general">birefnet-general (mais preciso, mais lento)</option>
                 <option value="bria-rmbg">bria-rmbg</option>
                 <option value="isnet-general-use">isnet-general-use</option>
-                <option value="u2net">u2net (legado)</option>
+                <option value="u2netp">u2netp (muito leve)</option>
               </select>
-              <p class="form-field-hint">Modelo mais preciso para fotos de produto com fundo branco.</p>
+              <p class="form-field-hint">u2net e bem mais rapido. Use birefnet so se precisar de bordas mais finas.</p>
+
+              <label for="cfg-rembg-max-edge">Lado maximo antes do Rembg (px)</label>
+              <input type="number" name="rembg_max_edge" id="cfg-rembg-max-edge" min="640" max="2048" step="64" value="1280">
+              <p class="form-field-hint">Imagens maiores sao redimensionadas antes do rembg (padrao 1280). Reduz muito o tempo.</p>
 
               <label class="config-checkbox">
                 <input type="checkbox" name="rembg_alpha_matting" id="cfg-rembg-alpha" value="1">
-                Alpha matting (bordas mais suaves)
+                Alpha matting (bordas mais suaves, bem mais lento)
               </label>
               <label class="config-checkbox">
                 <input type="checkbox" name="rembg_post_process_mask" id="cfg-rembg-ppm" value="1">
